@@ -5,19 +5,36 @@ import WebSocket from "ws"
 // Store WebSocket server instance
 let wss: WebSocketServer | null = null
 
+// Simple HTTP endpoint for WebSocket info
 export async function GET(request: NextRequest) {
-  const { searchParams } = new URL(request.url)
-
-  // This endpoint provides WebSocket connection info
   return Response.json({
-    message: "WebSocket server ready",
-    url: "/api/live-chat",
+    message: "AI Wingman WebSocket proxy ready",
     status: "available",
+    websocket_url:
+      process.env.NODE_ENV === "production" ? "wss://your-domain.com/api/websocket" : "ws://localhost:3001",
   })
 }
 
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json()
+
+    if (body.action === "test") {
+      return Response.json({
+        success: true,
+        message: "AI Wingman proxy is working",
+        gemini_available: !!process.env.GEMINI_API_KEY,
+      })
+    }
+
+    return Response.json({ error: "Unknown action" }, { status: 400 })
+  } catch (error) {
+    return Response.json({ error: "Invalid request" }, { status: 400 })
+  }
+}
+
 // Handle WebSocket upgrade requests
-export async function UPGRADE(request: NextRequest) {
+export async function UPGRADE(request: NextRequest, socket: any, head: any) {
   console.log("🚀 WebSocket upgrade request received")
 
   try {
@@ -34,19 +51,12 @@ export async function UPGRADE(request: NextRequest) {
     }
 
     // Handle the upgrade
-    const response = new Response(null, {
-      status: 101,
-      statusText: "Switching Protocols",
-      headers: {
-        Upgrade: "websocket",
-        Connection: "Upgrade",
-      },
+    wss.handleUpgrade(request, socket, head, (ws) => {
+      wss.emit("connection", ws, request)
     })
-
-    return response
   } catch (error) {
     console.error("❌ WebSocket upgrade error:", error)
-    return new Response("WebSocket upgrade failed", { status: 500 })
+    socket.destroy()
   }
 }
 

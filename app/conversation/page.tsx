@@ -4,10 +4,10 @@ import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Activity, Phone, ArrowLeft, Mic, MicOff, Brain, Volume2 } from "lucide-react"
+import { Activity, Phone, ArrowLeft, Mic, MicOff, Brain, MessageSquare } from "lucide-react"
 import { LiveChatClient } from "@/lib/websocket-client"
 
-type ConversationState = "initializing" | "listening" | "processing" | "generating" | "speaking" | "ready" | "error"
+type ConversationState = "initializing" | "listening" | "processing" | "speaking" | "ready" | "error"
 
 interface ConversationEntry {
   speaker: "user" | "ai"
@@ -49,7 +49,6 @@ export default function ConversationScreen() {
   const [crushGender, setCrushGender] = useState<"boy" | "girl" | null>(null)
   const [conversationState, setConversationState] = useState<ConversationState>("initializing")
   const [currentSuggestion, setCurrentSuggestion] = useState("Starting AI Wingman...")
-  const [lastTranscription, setLastTranscription] = useState("")
   const [isListening, setIsListening] = useState(false)
   const [audioLevel, setAudioLevel] = useState(0)
   const [rawAudioLevel, setRawAudioLevel] = useState(0)
@@ -69,11 +68,11 @@ export default function ConversationScreen() {
       duration?: number
     }>
   >([])
-  const [currentAudioText, setCurrentAudioText] = useState("")
   const [isGeminiConnected, setIsGeminiConnected] = useState(false)
+  const [displayedText, setDisplayedText] = useState("") // Text shown after audio
+  const [showTextDisplay, setShowTextDisplay] = useState(false)
 
   // Audio processing refs
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const audioContextRef = useRef<AudioContext | null>(null)
   const analyserRef = useRef<AnalyserNode | null>(null)
   const silenceTimeoutRef = useRef<NodeJS.Timeout | null>(null)
@@ -123,70 +122,72 @@ export default function ConversationScreen() {
         return
       }
       setCrushGender(gender)
-      initializeAIWingman()
+      initializeInstantAIWingman()
     }
   }, [])
 
-  const initializeAIWingman = async () => {
+  const initializeInstantAIWingman = async () => {
     try {
-      addPipelineStep("AI Wingman Init", "processing", "Starting complete AI system")
-      setCurrentSuggestion("🤖 Initializing AI Wingman with live response generation...")
-      setCurrentStep("Setting up AI Pipeline")
+      addPipelineStep("AI Wingman Init", "processing", "Starting instant AI system")
+      setCurrentSuggestion("🚀 Initializing Instant AI Wingman...")
+      setCurrentStep("Setting up Instant Response Pipeline")
 
-      // STEP 1: Initialize WebSocket connection to Gemini Live
-      addPipelineStep("Gemini Live Connection", "processing", "Connecting to Gemini Live API")
-      await initializeGeminiLive()
+      // STEP 1: Initialize WebSocket connection
+      addPipelineStep("WebSocket Connection", "processing", "Connecting to instant AI server")
+      await initializeInstantGeminiLive()
 
       // STEP 2: Setup microphone for real-time streaming
-      addPipelineStep("Microphone Setup", "processing", "Setting up real-time audio streaming")
-      await setupRealtimeAudio()
+      addPipelineStep("Microphone Setup", "processing", "Setting up instant audio streaming")
+      await setupInstantRealtimeAudio()
 
-      // STEP 3: Setup speaker for AI responses
-      addPipelineStep("Speaker Setup", "processing", "Testing audio output")
-      await setupSpeakerOutput()
+      // STEP 3: Setup speaker for instant AI responses
+      addPipelineStep("Speaker Setup", "processing", "Testing instant audio output")
+      await setupInstantSpeakerOutput()
 
       // STEP 4: Start real-time monitoring
-      addPipelineStep("Real-time Monitoring", "processing", "Starting speech detection")
-      startRealtimeMonitoring()
+      addPipelineStep("Real-time Monitoring", "processing", "Starting instant speech detection")
+      startInstantRealtimeMonitoring()
 
       // System Ready!
-      addPipelineStep("AI Wingman Ready", "complete", "All systems operational")
+      addPipelineStep("Instant AI Ready", "complete", "All systems operational for instant responses")
       setConversationState("ready")
       setIsListening(true)
-      setCurrentSuggestion("🚀 AI Wingman Ready! Start talking and I'll generate instant responses!")
-      setCurrentStep("Ready - Listening & Responding")
+      setCurrentSuggestion("🚀 Instant AI Wingman Ready! Start talking for immediate AI coaching!")
+      setCurrentStep("Ready - Instant Listening & Response")
 
-      addDebugInfo("✅ Complete AI Wingman system initialized")
+      addDebugInfo("✅ Instant AI Wingman system initialized")
     } catch (error: any) {
-      console.error("AI Wingman initialization error:", error)
+      console.error("Instant AI Wingman initialization error:", error)
       addPipelineStep("Initialization Failed", "error", error.message)
       setConversationState("error")
       setCurrentSuggestion(`❌ Setup Error: ${error.message}`)
     }
   }
 
-  const initializeGeminiLive = async () => {
+  const initializeInstantGeminiLive = async () => {
     try {
-      // Create WebSocket client
+      // Create WebSocket client for instant responses
       liveChatClientRef.current = new LiveChatClient()
 
-      // Set up event handlers
+      // Set up event handlers for instant processing
       liveChatClientRef.current.onStatusUpdate = (status) => {
         addDebugInfo(`🤖 Gemini Status: ${status}`)
         if (status.includes("session ready")) {
           setIsGeminiConnected(true)
-          updatePipelineStep("Gemini Live Connection", "complete", "Connected and configured")
+          updatePipelineStep("WebSocket Connection", "complete", "Connected for instant responses")
         }
       }
 
-      liveChatClientRef.current.onTextResponse = (text) => {
-        addDebugInfo(`📝 Gemini Text: ${text}`)
-        handleGeminiTextResponse(text)
+      // Handle instant audio responses (priority)
+      liveChatClientRef.current.onAudioResponse = (audioData, sampleRate) => {
+        addDebugInfo(`🔊 Instant Audio: ${audioData.length} samples at ${sampleRate}Hz`)
+        handleInstantGeminiAudioResponse(audioData, sampleRate)
       }
 
-      liveChatClientRef.current.onAudioResponse = (audioData, sampleRate) => {
-        addDebugInfo(`🔊 Gemini Audio: ${audioData.length} samples at ${sampleRate}Hz`)
-        handleGeminiAudioResponse(audioData, sampleRate)
+      // Handle text display after audio (secondary)
+      liveChatClientRef.current.onTextDisplay = (text) => {
+        addDebugInfo(`📝 Text Display: ${text}`)
+        handleGeminiTextDisplay(text)
       }
 
       liveChatClientRef.current.onError = (error) => {
@@ -195,11 +196,11 @@ export default function ConversationScreen() {
       }
 
       liveChatClientRef.current.onConnect = () => {
-        addDebugInfo("✅ Connected to live chat proxy")
+        addDebugInfo("✅ Connected to instant AI proxy")
       }
 
       liveChatClientRef.current.onDisconnect = () => {
-        addDebugInfo("🔌 Disconnected from live chat proxy")
+        addDebugInfo("🔌 Disconnected from instant AI proxy")
         setIsGeminiConnected(false)
       }
 
@@ -207,18 +208,18 @@ export default function ConversationScreen() {
       await liveChatClientRef.current.connect()
       liveChatClientRef.current.connectToGemini()
 
-      addDebugInfo("✅ Gemini Live API connection initiated")
+      addDebugInfo("✅ Instant Gemini Live API connection initiated")
     } catch (error) {
-      throw new Error(`Failed to connect to Gemini Live: ${error.message}`)
+      throw new Error(`Failed to connect to Instant Gemini Live: ${error.message}`)
     }
   }
 
-  const setupRealtimeAudio = async () => {
+  const setupInstantRealtimeAudio = async () => {
     try {
-      // Request microphone access
+      // Request microphone access for instant processing
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
-          sampleRate: 16000, // Gemini expects 16kHz
+          sampleRate: 16000, // Optimized for Gemini
           channelCount: 1,
           echoCancellation: true,
           noiseSuppression: false,
@@ -229,7 +230,7 @@ export default function ConversationScreen() {
       streamRef.current = stream
       setMicrophoneStatus("granted")
 
-      // Setup audio context for real-time processing
+      // Setup audio context for instant processing
       const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext
       audioContextRef.current = new AudioContextClass({ sampleRate: 16000 })
 
@@ -239,27 +240,26 @@ export default function ConversationScreen() {
 
       // Setup analyser for visual feedback
       analyserRef.current = audioContextRef.current.createAnalyser()
-      analyserRef.current.fftSize = 512
-      analyserRef.current.smoothingTimeConstant = 0.3
+      analyserRef.current.fftSize = 256 // Smaller for faster processing
+      analyserRef.current.smoothingTimeConstant = 0.2
 
       const source = audioContextRef.current.createMediaStreamSource(stream)
       source.connect(analyserRef.current)
 
-      // Setup real-time audio processing
-      await setupAudioWorklet(source)
+      // Setup instant audio processing
+      await setupInstantAudioWorklet(source)
 
-      updatePipelineStep("Microphone Setup", "complete", "Real-time audio streaming ready")
-      addDebugInfo("✅ Real-time audio setup complete")
+      updatePipelineStep("Microphone Setup", "complete", "Instant audio streaming ready")
+      addDebugInfo("✅ Instant real-time audio setup complete")
     } catch (error) {
-      throw new Error(`Microphone setup failed: ${error.message}`)
+      throw new Error(`Instant microphone setup failed: ${error.message}`)
     }
   }
 
-  const setupAudioWorklet = async (source: MediaStreamAudioSourceNode) => {
+  const setupInstantAudioWorklet = async (source: MediaStreamAudioSourceNode) => {
     try {
-      // Create a ScriptProcessorNode for real-time audio processing
-      // (AudioWorklet would be better but ScriptProcessor is more compatible)
-      const processor = audioContextRef.current!.createScriptProcessor(4096, 1, 1)
+      // Create ScriptProcessorNode for instant audio processing
+      const processor = audioContextRef.current!.createScriptProcessor(2048, 1, 1) // Smaller buffer for lower latency
 
       processor.onaudioprocess = (event) => {
         if (!isStreamingRef.current || !liveChatClientRef.current?.geminiConnected) {
@@ -269,17 +269,17 @@ export default function ConversationScreen() {
         const inputBuffer = event.inputBuffer
         const inputData = inputBuffer.getChannelData(0)
 
-        // Convert Float32Array to Int16Array for Gemini
+        // Convert Float32Array to Int16Array for instant processing
         const int16Data = new Int16Array(inputData.length)
         for (let i = 0; i < inputData.length; i++) {
           int16Data[i] = Math.max(-32768, Math.min(32767, inputData[i] * 32768))
         }
 
-        // Send to Gemini Live API
+        // Send to Gemini Live API for instant processing
         try {
           liveChatClientRef.current?.sendAudio(int16Data)
         } catch (error) {
-          console.error("Error sending audio to Gemini:", error)
+          console.error("Error sending audio for instant processing:", error)
         }
       }
 
@@ -287,29 +287,29 @@ export default function ConversationScreen() {
       processor.connect(audioContextRef.current!.destination)
 
       audioWorkletRef.current = processor as any
-      addDebugInfo("✅ Audio worklet setup complete")
+      addDebugInfo("✅ Instant audio worklet setup complete")
     } catch (error) {
-      addDebugInfo(`⚠️ Audio worklet setup failed: ${error.message}`)
+      addDebugInfo(`⚠️ Instant audio worklet setup failed: ${error.message}`)
     }
   }
 
-  const setupSpeakerOutput = async () => {
+  const setupInstantSpeakerOutput = async () => {
     try {
       if ("speechSynthesis" in window) {
         setSpeakerStatus("granted")
-        updatePipelineStep("Speaker Setup", "complete", "Audio output ready")
-        addDebugInfo("✅ Speaker output ready")
+        updatePipelineStep("Speaker Setup", "complete", "Instant audio output ready")
+        addDebugInfo("✅ Instant speaker output ready")
       } else {
         setSpeakerStatus("error")
         updatePipelineStep("Speaker Setup", "error", "Speech synthesis not supported")
       }
     } catch (error) {
       setSpeakerStatus("error")
-      throw new Error(`Speaker setup failed: ${error.message}`)
+      throw new Error(`Instant speaker setup failed: ${error.message}`)
     }
   }
 
-  const startRealtimeMonitoring = () => {
+  const startInstantRealtimeMonitoring = () => {
     if (!analyserRef.current) return
 
     monitoringRef.current = true
@@ -321,7 +321,7 @@ export default function ConversationScreen() {
       try {
         analyserRef.current.getByteFrequencyData(dataArray)
 
-        // Calculate audio level for visualization
+        // Calculate audio level for instant visualization
         let sum = 0
         for (let i = 0; i < dataArray.length; i += 2) {
           sum += dataArray[i] * dataArray[i]
@@ -330,38 +330,38 @@ export default function ConversationScreen() {
         const normalizedLevel = rms / 255
 
         setRawAudioLevel(normalizedLevel)
-        setAudioLevel((prev) => prev * 0.7 + normalizedLevel * 0.3)
+        setAudioLevel((prev) => prev * 0.8 + normalizedLevel * 0.2) // Faster response
 
-        // Speech detection for visual feedback
-        const speechThreshold = 0.015
+        // Instant speech detection
+        const speechThreshold = 0.012
         const isSpeaking = normalizedLevel > speechThreshold
 
         if (isSpeaking && !speechDetected) {
           setSpeechDetected(true)
           setConversationState("listening")
-          setCurrentSuggestion("🎤 Listening and processing with AI...")
-          setCurrentStep("Live Audio Processing")
+          setCurrentSuggestion("🎤 Listening for instant AI coaching...")
+          setCurrentStep("Instant Audio Processing")
 
-          // Start streaming to Gemini
+          // Start streaming to Gemini instantly
           if (!isStreamingRef.current && liveChatClientRef.current?.geminiConnected) {
             isStreamingRef.current = true
-            addDebugInfo("🎤 Started streaming audio to Gemini")
+            addDebugInfo("🎤 Started instant streaming to Gemini")
           }
         } else if (!isSpeaking && speechDetected) {
-          // Brief pause in speech
+          // Brief pause in speech - trigger instant response
           if (!silenceTimeoutRef.current) {
             silenceTimeoutRef.current = setTimeout(() => {
               setSpeechDetected(false)
               setConversationState("processing")
-              setCurrentSuggestion("🤖 AI processing your speech...")
-              setCurrentStep("Generating Response")
+              setCurrentSuggestion("🤖 AI generating instant response...")
+              setCurrentStep("Instant Response Generation")
 
               // Stop streaming
               isStreamingRef.current = false
-              addDebugInfo("🤫 Stopped streaming audio to Gemini")
+              addDebugInfo("🤫 Stopped streaming - generating instant response")
 
               silenceTimeoutRef.current = null
-            }, 1500)
+            }, 800) // Faster timeout for instant responses
           }
         } else if (isSpeaking && speechDetected) {
           // Continue speaking
@@ -378,17 +378,32 @@ export default function ConversationScreen() {
     }
 
     checkAudioLevel()
-    updatePipelineStep("Real-time Monitoring", "complete", "Speech detection active")
+    updatePipelineStep("Real-time Monitoring", "complete", "Instant speech detection active")
   }
 
-  const handleGeminiTextResponse = (text: string) => {
-    addPipelineStep("Text Response", "complete", `"${text.substring(0, 50)}..."`)
-    setLastTranscription(text)
-    setCurrentAudioText(text)
+  const handleInstantGeminiAudioResponse = (audioData: Int16Array, sampleRate: number) => {
+    addPipelineStep("Instant Audio Response", "processing", `Playing ${audioData.length} samples instantly`)
+    setConversationState("speaking")
+    setCurrentStep("AI Speaking Instantly")
+
+    try {
+      // Play the audio response from Gemini instantly
+      playInstantAudioResponse(audioData, sampleRate)
+      updatePipelineStep("Instant Audio Response", "complete", "Instant audio playback started")
+    } catch (error) {
+      addDebugInfo(`❌ Instant audio playback error: ${error.message}`)
+      updatePipelineStep("Instant Audio Response", "error", "Instant audio playback failed")
+    }
+  }
+
+  const handleGeminiTextDisplay = (text: string) => {
+    // Show text after audio has been playing
+    setDisplayedText(text)
+    setShowTextDisplay(true)
 
     // Add to conversation history
     setConversationHistory((prev) => [
-      ...prev.slice(-8),
+      ...prev.slice(-6),
       {
         speaker: "ai",
         text: text,
@@ -397,98 +412,46 @@ export default function ConversationScreen() {
       },
     ])
 
-    // Speak the response using browser TTS as backup
-    speakResponse(text)
+    // Hide text display after 8 seconds
+    setTimeout(() => {
+      setShowTextDisplay(false)
+    }, 8000)
   }
 
-  const handleGeminiAudioResponse = (audioData: Int16Array, sampleRate: number) => {
-    addPipelineStep("Audio Response", "processing", `Playing ${audioData.length} samples`)
-    setConversationState("speaking")
-    setCurrentStep("AI Speaking Response")
-
-    try {
-      // Play the audio response from Gemini
-      playAudioResponse(audioData, sampleRate)
-      updatePipelineStep("Audio Response", "complete", "Audio playback started")
-    } catch (error) {
-      addDebugInfo(`❌ Audio playback error: ${error.message}`)
-      updatePipelineStep("Audio Response", "error", "Audio playback failed")
-    }
-  }
-
-  const playAudioResponse = (audioData: Int16Array, sampleRate: number) => {
+  const playInstantAudioResponse = (audioData: Int16Array, sampleRate: number) => {
     try {
       if (!audioContextRef.current) return
 
-      // Create audio buffer
+      // Create audio buffer for instant playback
       const audioBuffer = audioContextRef.current.createBuffer(1, audioData.length, sampleRate)
       const channelData = audioBuffer.getChannelData(0)
 
-      // Convert Int16Array to Float32Array
+      // Convert Int16Array to Float32Array instantly
       for (let i = 0; i < audioData.length; i++) {
         channelData[i] = audioData[i] / 32768
       }
 
-      // Create and play audio source
+      // Create and play audio source instantly
       const source = audioContextRef.current.createBufferSource()
       source.buffer = audioBuffer
       source.connect(audioContextRef.current.destination)
 
       source.onended = () => {
-        addDebugInfo("✅ AI audio response finished")
+        addDebugInfo("✅ Instant AI audio response finished")
         setConversationState("ready")
         setCurrentSuggestion("🚀 Ready for your next line!")
-        setCurrentStep("Ready - Listening & Responding")
-        setCurrentAudioText("")
+        setCurrentStep("Ready - Instant Listening & Response")
         setResponseCount((prev) => prev + 1)
       }
 
       source.start()
-      addDebugInfo(`🔊 Playing AI audio response: ${audioData.length} samples at ${sampleRate}Hz`)
+      addDebugInfo(`🔊 Playing instant AI audio response: ${audioData.length} samples at ${sampleRate}Hz`)
     } catch (error) {
-      addDebugInfo(`❌ Audio playback error: ${error.message}`)
+      addDebugInfo(`❌ Instant audio playback error: ${error.message}`)
       // Fallback to ready state
       setConversationState("ready")
       setCurrentSuggestion("🚀 Ready for your next line!")
-      setCurrentStep("Ready - Listening & Responding")
-    }
-  }
-
-  const speakResponse = (text: string) => {
-    // Backup TTS using browser speech synthesis
-    if (typeof window !== "undefined" && "speechSynthesis" in window) {
-      speechSynthesis.cancel()
-
-      const utterance = new SpeechSynthesisUtterance(text)
-      utterance.rate = 0.9
-      utterance.pitch = 1.0
-      utterance.volume = 0.8
-
-      utterance.onstart = () => {
-        setConversationState("speaking")
-        setCurrentStep("AI Speaking (TTS)")
-      }
-
-      utterance.onend = () => {
-        setConversationState("ready")
-        setCurrentSuggestion("🚀 Ready for your next line!")
-        setCurrentStep("Ready - Listening & Responding")
-        setCurrentAudioText("")
-        setResponseCount((prev) => prev + 1)
-      }
-
-      utterance.onerror = () => {
-        setConversationState("ready")
-        setCurrentSuggestion("🚀 Ready for your next line!")
-        setCurrentStep("Ready - Listening & Responding")
-      }
-
-      // Small delay to let Gemini audio play first
-      setTimeout(() => {
-        if (conversationState === "speaking") {
-          speechSynthesis.speak(utterance)
-        }
-      }, 500)
+      setCurrentStep("Ready - Instant Listening & Response")
     }
   }
 
@@ -527,7 +490,7 @@ export default function ConversationScreen() {
       speechSynthesis.cancel()
     }
 
-    addDebugInfo(`✅ Session ended. Generated ${responseCount} AI responses.`)
+    addDebugInfo(`✅ Session ended. Generated ${responseCount} instant AI responses.`)
 
     if (typeof window !== "undefined") {
       window.location.href = "/"
@@ -537,15 +500,13 @@ export default function ConversationScreen() {
   const getStateDisplay = () => {
     switch (conversationState) {
       case "initializing":
-        return { text: "🤖 Initializing...", color: "bg-blue-500" }
+        return { text: "🚀 Initializing...", color: "bg-blue-500" }
       case "ready":
         return { text: "🚀 Ready!", color: "bg-green-500" }
       case "listening":
         return { text: "🎤 Listening...", color: "bg-yellow-500" }
       case "processing":
         return { text: "⚡ Processing...", color: "bg-orange-500" }
-      case "generating":
-        return { text: "🧠 Generating...", color: "bg-purple-500" }
       case "speaking":
         return { text: "🗣️ AI Speaking...", color: "bg-red-500" }
       case "error":
@@ -573,7 +534,7 @@ export default function ConversationScreen() {
 
           <div className="text-center">
             <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-              <Brain className="h-6 w-6 text-purple-400" />🤖 AI Wingman Live
+              <Brain className="h-6 w-6 text-purple-400" />⚡ Instant AI Wingman
               {isListening ? <Mic className="h-6 w-6 text-green-400" /> : <MicOff className="h-6 w-6 text-red-400" />}
             </h1>
           </div>
@@ -618,7 +579,7 @@ export default function ConversationScreen() {
                 <div
                   className={`w-3 h-3 rounded-full ${isGeminiConnected ? "bg-green-500 animate-pulse" : "bg-red-500"}`}
                 />
-                <span className="text-white text-xs">🤖 Gemini</span>
+                <span className="text-white text-xs">⚡ Instant AI</span>
               </div>
             </CardContent>
           </Card>
@@ -644,7 +605,7 @@ export default function ConversationScreen() {
           <CardContent className="pt-6">
             <div className="text-center">
               <p className="text-xl font-bold text-blue-200">{currentStep}</p>
-              <p className="text-sm text-blue-300 mt-2">🎤 Real-time Audio → 🤖 Gemini Live API → 🔊 AI Response</p>
+              <p className="text-sm text-blue-300 mt-2">🎤 Instant Audio → ⚡ Instant AI → 🔊 Instant Response</p>
             </div>
           </CardContent>
         </Card>
@@ -653,7 +614,7 @@ export default function ConversationScreen() {
         <Card className="bg-gradient-to-r from-green-500/20 to-blue-500/20 backdrop-blur border-green-300/30">
           <CardHeader>
             <CardTitle className="text-white text-center flex items-center justify-center gap-2">
-              <Activity className="h-5 w-5" />🤖 Live AI Pipeline
+              <Activity className="h-5 w-5" />⚡ Instant AI Pipeline
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -687,22 +648,22 @@ export default function ConversationScreen() {
           </CardContent>
         </Card>
 
-        {/* Current AI Response */}
-        {currentAudioText && (
-          <Card className="bg-gradient-to-r from-pink-500/20 to-red-500/20 backdrop-blur border-pink-300/30">
+        {/* Text Display Window (shown after audio) */}
+        {showTextDisplay && displayedText && (
+          <Card className="bg-gradient-to-r from-purple-500/20 to-pink-500/20 backdrop-blur border-purple-300/30 animate-in slide-in-from-bottom-4">
             <CardHeader>
               <CardTitle className="text-white text-center flex items-center justify-center gap-2">
-                <Volume2 className="h-5 w-5 animate-pulse" />🤖 AI Response
+                <MessageSquare className="h-5 w-5" />📝 AI Coaching Response
               </CardTitle>
             </CardHeader>
             <CardContent>
               <div className="text-center">
                 <div className="bg-white/10 rounded-lg p-4">
-                  <p className="text-lg font-medium text-white leading-relaxed">"{currentAudioText}"</p>
+                  <p className="text-lg font-medium text-white leading-relaxed">"{displayedText}"</p>
                 </div>
-                <div className="flex items-center justify-center gap-2 text-pink-300 mt-3">
-                  <Volume2 className="h-4 w-4 animate-pulse" />
-                  <span className="text-sm">🔊 AI speaking response...</span>
+                <div className="flex items-center justify-center gap-2 text-purple-300 mt-3">
+                  <MessageSquare className="h-4 w-4" />
+                  <span className="text-sm">💬 AI coaching suggestion displayed after audio</span>
                 </div>
               </div>
             </CardContent>
@@ -713,7 +674,7 @@ export default function ConversationScreen() {
         <Card className="bg-gradient-to-r from-purple-500/20 to-pink-500/20 backdrop-blur border-purple-300/30">
           <CardHeader>
             <CardTitle className="text-white text-center flex items-center justify-center gap-2">
-              <Brain className="h-5 w-5" />🚀 AI Wingman Status
+              <Brain className="h-5 w-5" />⚡ Instant AI Wingman Status
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -729,10 +690,10 @@ export default function ConversationScreen() {
         <Card className="bg-white/5 backdrop-blur border-white/10">
           <CardContent className="pt-6">
             <div className="text-center space-y-4">
-              <h3 className="text-white font-semibold">🎤 Live Audio Stream</h3>
+              <h3 className="text-white font-semibold">🎤 Instant Audio Stream</h3>
               <AudioVisualizer audioLevel={audioLevel} isActive={speechDetected} rawLevel={rawAudioLevel} />
               <div className="text-xs text-gray-400">
-                {isGeminiConnected ? "🤖 Streaming to Gemini Live API" : "⚠️ Waiting for Gemini connection"}
+                {isGeminiConnected ? "⚡ Streaming to Instant AI" : "⚠️ Waiting for AI connection"}
               </div>
             </div>
           </CardContent>
@@ -742,13 +703,13 @@ export default function ConversationScreen() {
         {conversationHistory.length > 0 && (
           <Card className="bg-white/5 backdrop-blur border-white/10">
             <CardHeader>
-              <CardTitle className="text-white text-sm">💬 AI Responses</CardTitle>
+              <CardTitle className="text-white text-sm">💬 Recent AI Coaching</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="space-y-2 max-h-32 overflow-y-auto">
                 {conversationHistory.slice(-4).map((entry, index) => (
                   <div key={index} className="text-sm">
-                    <span className="font-semibold text-purple-300">🤖 AI Wingman:</span>
+                    <span className="font-semibold text-purple-300">⚡ Instant AI:</span>
                     <span className="text-gray-300 ml-2">"{entry.text}"</span>
                   </div>
                 ))}
@@ -761,19 +722,19 @@ export default function ConversationScreen() {
         <Card className="bg-yellow-500/10 border-yellow-400/30">
           <CardContent className="pt-6">
             <div className="text-center space-y-2">
-              <h3 className="text-yellow-200 font-semibold">🤖 Live AI Wingman System</h3>
+              <h3 className="text-yellow-200 font-semibold">⚡ Instant AI Wingman System</h3>
               <div className="grid grid-cols-3 gap-4 text-sm">
                 <div>
-                  <p className="text-yellow-100">Real-time Audio</p>
+                  <p className="text-yellow-100">Instant Audio</p>
                   <p className="text-xs text-yellow-200">16kHz streaming</p>
                 </div>
                 <div>
-                  <p className="text-yellow-100">Gemini Live API</p>
-                  <p className="text-xs text-yellow-200">Instant responses</p>
+                  <p className="text-yellow-100">Instant AI</p>
+                  <p className="text-xs text-yellow-200">Sub-second responses</p>
                 </div>
                 <div>
-                  <p className="text-yellow-100">AI Audio Output</p>
-                  <p className="text-xs text-yellow-200">24kHz playback</p>
+                  <p className="text-yellow-100">Instant Playback</p>
+                  <p className="text-xs text-yellow-200">24kHz audio</p>
                 </div>
               </div>
             </div>
