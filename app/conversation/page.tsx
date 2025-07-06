@@ -84,6 +84,7 @@ export default function ConversationScreen() {
   const monitoringRef = useRef<boolean>(false)
   const stepStartTimeRef = useRef<number>(0)
   const animationFrameRef = useRef(null)
+  const isProcessingResponseRef = useRef<boolean>(false)
 
   const addDebugInfo = (info: string) => {
     console.log("RIZZLER DEBUG:", info)
@@ -263,7 +264,7 @@ export default function ConversationScreen() {
         const speechThreshold = 0.008
         const isSpeaking = normalizedLevel > speechThreshold
 
-        if (isSpeaking && !speechDetected) {
+        if (isSpeaking && !speechDetected && !isProcessingResponseRef.current) {
           setSpeechDetected(true)
           setConversationState("listening")
           setCurrentSuggestion("🎤 Rizzler AI is listening...")
@@ -275,7 +276,7 @@ export default function ConversationScreen() {
             clearTimeout(silenceTimeoutRef.current)
             silenceTimeoutRef.current = null
           }
-        } else if (!isSpeaking && speechDetected) {
+        } else if (!isSpeaking && speechDetected && !isProcessingResponseRef.current) {
           // Start silence timeout
           if (!silenceTimeoutRef.current) {
             silenceTimeoutRef.current = setTimeout(() => {
@@ -285,13 +286,11 @@ export default function ConversationScreen() {
               setCurrentStep("Generating Response")
               addDebugInfo("🤫 Silence detected - Rizzler generating response...")
 
-              // Generate response after brief delay
-              setTimeout(() => {
-                generateRizzlerResponse()
-              }, 300)
+              // Generate response immediately
+              generateRizzlerResponse()
 
               silenceTimeoutRef.current = null
-            }, 1000) // 1 second silence timeout
+            }, 800) // Shorter timeout for faster responses
           }
         } else if (isSpeaking && speechDetected) {
           // Continue speaking - cancel timeout
@@ -311,6 +310,13 @@ export default function ConversationScreen() {
   }
 
   const generateRizzlerResponse = () => {
+    // Prevent multiple responses at once
+    if (isProcessingResponseRef.current) {
+      addDebugInfo("⚠️ Already processing response, skipping...")
+      return
+    }
+
+    isProcessingResponseRef.current = true
     addPipelineStep("Rizzler Response", "processing", "Generating Rizzler AI response")
     setConversationState("speaking")
     setIsSpeaking(true)
@@ -342,58 +348,77 @@ export default function ConversationScreen() {
 
     const randomResponse = rizzlerResponses[Math.floor(Math.random() * rizzlerResponses.length)]
 
+    addDebugInfo(`🎯 Selected response: ${randomResponse}`)
+
     // Play Rizzler AI response with better voice settings
     if ("speechSynthesis" in window) {
       // Cancel any existing speech
       speechSynthesis.cancel()
 
-      const utterance = new SpeechSynthesisUtterance(randomResponse)
-      utterance.rate = 1.1
-      utterance.pitch = 1.0
-      utterance.volume = 0.9
+      // Wait a moment for cancellation to complete
+      setTimeout(() => {
+        const utterance = new SpeechSynthesisUtterance(randomResponse)
+        utterance.rate = 1.1
+        utterance.pitch = 1.0
+        utterance.volume = 0.9
 
-      // Try to use a better voice if available
-      const voices = speechSynthesis.getVoices()
-      const preferredVoice = voices.find(
-        (voice) =>
-          voice.name.includes("Google") ||
-          voice.name.includes("Microsoft") ||
-          voice.name.includes("Alex") ||
-          voice.name.includes("Samantha") ||
-          voice.name.includes("Daniel") ||
-          voice.name.includes("Karen"),
-      )
-      if (preferredVoice) {
-        utterance.voice = preferredVoice
-      }
+        // Try to use a better voice if available
+        const voices = speechSynthesis.getVoices()
+        const preferredVoice = voices.find(
+          (voice) =>
+            voice.name.includes("Google") ||
+            voice.name.includes("Microsoft") ||
+            voice.name.includes("Alex") ||
+            voice.name.includes("Samantha") ||
+            voice.name.includes("Daniel") ||
+            voice.name.includes("Karen"),
+        )
+        if (preferredVoice) {
+          utterance.voice = preferredVoice
+        }
 
-      utterance.onstart = () => {
-        addDebugInfo(`🔊 Rizzler AI speaking: ${randomResponse.substring(0, 50)}...`)
-      }
+        utterance.onstart = () => {
+          addDebugInfo(`🔊 Rizzler AI speaking: ${randomResponse.substring(0, 50)}...`)
+        }
 
-      utterance.onend = () => {
-        setConversationState("ready")
-        setCurrentSuggestion("🚀 Rizzler AI ready for your next line!")
-        setCurrentStep("Ready - Listening for Your Voice")
-        setResponseCount((prev) => prev + 1)
-        setIsSpeaking(false)
-        updatePipelineStep("Rizzler Response", "complete", "Response delivered")
-        addDebugInfo("✅ Rizzler AI response completed")
-      }
+        utterance.onend = () => {
+          addDebugInfo("✅ Rizzler AI response completed")
+          isProcessingResponseRef.current = false
+          setConversationState("ready")
+          setCurrentSuggestion("🚀 Rizzler AI ready for your next line!")
+          setCurrentStep("Ready - Listening for Your Voice")
+          setResponseCount((prev) => prev + 1)
+          setIsSpeaking(false)
+          updatePipelineStep("Rizzler Response", "complete", "Response delivered")
+        }
 
-      utterance.onerror = (event) => {
-        console.error("Rizzler AI speech error:", event)
-        setConversationState("ready")
-        setCurrentSuggestion("🚀 Rizzler AI ready for your next line!")
-        setCurrentStep("Ready - Listening for Your Voice")
-        setIsSpeaking(false)
-        updatePipelineStep("Rizzler Response", "error", "Speech synthesis failed")
-      }
+        utterance.onerror = (event) => {
+          console.error("Rizzler AI speech error:", event)
+          addDebugInfo(`❌ Speech error: ${event.error}`)
+          isProcessingResponseRef.current = false
+          setConversationState("ready")
+          setCurrentSuggestion("🚀 Rizzler AI ready for your next line!")
+          setCurrentStep("Ready - Listening for Your Voice")
+          setIsSpeaking(false)
+          updatePipelineStep("Rizzler Response", "error", "Speech synthesis failed")
+        }
 
-      speechSynthesis.speak(utterance)
-      addDebugInfo(`🔊 Rizzler AI response: ${randomResponse}`)
+        try {
+          speechSynthesis.speak(utterance)
+          addDebugInfo(`🔊 Rizzler AI response queued: ${randomResponse}`)
+        } catch (error) {
+          addDebugInfo(`❌ Failed to speak: ${error}`)
+          isProcessingResponseRef.current = false
+          setConversationState("ready")
+          setCurrentSuggestion("🚀 Rizzler AI ready for your next line!")
+          setCurrentStep("Ready - Listening for Your Voice")
+          setIsSpeaking(false)
+        }
+      }, 100)
     } else {
       // Fallback if speech synthesis not available
+      addDebugInfo("⚠️ Speech synthesis not available")
+      isProcessingResponseRef.current = false
       setConversationState("ready")
       setCurrentSuggestion("🚀 Rizzler AI ready for your next line!")
       setCurrentStep("Ready - Listening for Your Voice")
@@ -426,6 +451,7 @@ export default function ConversationScreen() {
 
   const endConversation = () => {
     monitoringRef.current = false
+    isProcessingResponseRef.current = false
     setIsListening(false)
 
     // Stop microphone
@@ -479,6 +505,12 @@ export default function ConversationScreen() {
       setCurrentStep("Ready - Click to Start Listening")
       addDebugInfo("🔇 Stopped listening")
     }
+  }
+
+  // Test response function for debugging
+  const testResponse = () => {
+    addDebugInfo("🧪 Testing response generation...")
+    generateRizzlerResponse()
   }
 
   const getStatusColor = (status) => {
@@ -730,6 +762,16 @@ export default function ConversationScreen() {
                 )}
               </Button>
 
+              {/* Test Response Button */}
+              <Button
+                onClick={testResponse}
+                variant="outline"
+                className="w-full bg-purple-600/20 border-purple-500/30 text-purple-200 hover:bg-purple-600/30"
+              >
+                <Zap className="w-4 h-4 mr-2" />
+                Test Rizzler Response
+              </Button>
+
               {/* Audio Level Indicator */}
               {isListening && (
                 <div className="space-y-2">
@@ -756,6 +798,22 @@ export default function ConversationScreen() {
             </CardContent>
           </Card>
         </div>
+
+        {/* Debug Info */}
+        <Card className="bg-black/20 border-gray-500/30 backdrop-blur-sm">
+          <CardHeader>
+            <CardTitle className="text-white text-sm">🐛 Debug Info</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-1 max-h-32 overflow-y-auto">
+              {debugInfo.map((info, index) => (
+                <p key={index} className="text-xs text-gray-300 font-mono">
+                  {info}
+                </p>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
 
         {/* Status Bar */}
         <div className="mt-6">
