@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Activity, Phone, ArrowLeft, Mic, MicOff, Brain, MessageSquare, Volume2, Settings, Zap } from "lucide-react"
-import type { LiveChatClient } from "@/lib/websocket-client"
 
 type ConversationState = "initializing" | "listening" | "processing" | "speaking" | "ready" | "error"
 
@@ -48,7 +47,7 @@ function AudioVisualizer({ audioLevel, isActive, rawLevel }: AudioVisualizerProp
 export default function ConversationScreen() {
   const [crushGender, setCrushGender] = useState<"boy" | "girl" | null>(null)
   const [conversationState, setConversationState] = useState<ConversationState>("initializing")
-  const [currentSuggestion, setCurrentSuggestion] = useState("Starting AI Wingman...")
+  const [currentSuggestion, setCurrentSuggestion] = useState("Starting Rizzler AI...")
   const [isListening, setIsListening] = useState(false)
   const [isSpeaking, setIsSpeaking] = useState(false)
   const [connectionStatus, setConnectionStatus] = useState("disconnected")
@@ -73,8 +72,8 @@ export default function ConversationScreen() {
       duration?: number
     }>
   >([])
-  const [isGeminiConnected, setIsGeminiConnected] = useState(false)
-  const [displayedText, setDisplayedText] = useState("") // Text shown after audio
+  const [isRizzlerConnected, setIsRizzlerConnected] = useState(false)
+  const [displayedText, setDisplayedText] = useState("")
   const [showTextDisplay, setShowTextDisplay] = useState(false)
 
   // Audio processing refs
@@ -84,18 +83,10 @@ export default function ConversationScreen() {
   const streamRef = useRef<MediaStream | null>(null)
   const monitoringRef = useRef<boolean>(false)
   const stepStartTimeRef = useRef<number>(0)
-
-  // WebSocket client ref
-  const liveChatClientRef = useRef<LiveChatClient | null>(null)
-  const wsClientRef = useRef(null)
-
-  // Audio processing for real-time streaming
-  const audioWorkletRef = useRef<AudioWorkletNode | null>(null)
-  const isStreamingRef = useRef<boolean>(false)
   const animationFrameRef = useRef(null)
 
   const addDebugInfo = (info: string) => {
-    console.log("DEBUG:", info)
+    console.log("RIZZLER DEBUG:", info)
     setDebugInfo((prev) => [...prev.slice(-4), `${new Date().toLocaleTimeString()}: ${info}`])
   }
 
@@ -143,18 +134,18 @@ export default function ConversationScreen() {
         return
       }
       setCrushGender(gender)
-      initializeInstantAIWingman()
+      initializeRizzlerAI()
     }
   }, [])
 
-  const initializeInstantAIWingman = async () => {
+  const initializeRizzlerAI = async () => {
     try {
-      addPipelineStep("AI Wingman Init", "processing", "Starting instant AI system")
-      setCurrentSuggestion("🚀 Initializing Instant AI Wingman...")
-      setCurrentStep("Setting up Instant Response Pipeline")
+      addPipelineStep("Rizzler AI Init", "processing", "Starting Rizzler AI system")
+      setCurrentSuggestion("🚀 Initializing Rizzler AI...")
+      setCurrentStep("Setting up Rizzler AI")
 
       // STEP 1: Quick microphone check
-      addPipelineStep("Microphone Check", "processing", "Quick microphone access test")
+      addPipelineStep("Microphone Check", "processing", "Testing microphone access")
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
         stream.getTracks().forEach((track) => track.stop()) // Stop immediately after test
@@ -163,7 +154,7 @@ export default function ConversationScreen() {
       } catch (error) {
         setMicrophoneStatus("denied")
         updatePipelineStep("Microphone Check", "error", "Microphone access denied")
-        throw new Error("Microphone access required for AI Wingman")
+        throw new Error("Microphone access required for Rizzler AI")
       }
 
       // STEP 2: Quick speaker check
@@ -176,54 +167,54 @@ export default function ConversationScreen() {
         updatePipelineStep("Speaker Check", "error", "Audio output not supported")
       }
 
-      // STEP 3: Setup real-time audio (no WebSocket dependency)
-      addPipelineStep("Audio Setup", "processing", "Setting up real-time audio")
-      await setupSimplifiedAudio()
-      updatePipelineStep("Audio Setup", "complete", "Real-time audio ready")
+      // STEP 3: Setup audio system
+      addPipelineStep("Audio Setup", "processing", "Setting up audio processing")
+      await setupRizzlerAudio()
+      updatePipelineStep("Audio Setup", "complete", "Audio system ready")
 
-      // STEP 4: Enable instant AI mode (no external connections needed)
-      addPipelineStep("AI System", "processing", "Activating instant AI responses")
-      setIsGeminiConnected(true) // Enable instant mode
-      updatePipelineStep("AI System", "complete", "Instant AI system ready")
+      // STEP 4: Enable Rizzler AI
+      addPipelineStep("Rizzler AI", "processing", "Activating Rizzler AI")
+      setIsRizzlerConnected(true)
+      setConnectionStatus("connected") // Fix connection status
+      updatePipelineStep("Rizzler AI", "complete", "Rizzler AI ready")
 
-      // STEP 5: Start monitoring
+      // STEP 5: Start listening
       addPipelineStep("Speech Detection", "processing", "Starting speech detection")
-      startSimplifiedMonitoring()
+      startRizzlerListening()
       updatePipelineStep("Speech Detection", "complete", "Speech detection active")
 
       // System Ready!
-      addPipelineStep("Instant AI Ready", "complete", "All systems operational")
+      addPipelineStep("Rizzler Ready", "complete", "All systems operational")
       setConversationState("ready")
       setIsListening(true)
-      setCurrentSuggestion("🚀 Instant AI Wingman Ready! Start talking for immediate coaching!")
-      setCurrentStep("Ready - Listening for Speech")
+      setCurrentSuggestion("🚀 Rizzler AI Ready! Start talking and I'll coach you!")
+      setCurrentStep("Ready - Listening for Your Voice")
+      setStatusMessage("Rizzler AI Connected and Ready")
 
-      addDebugInfo("✅ Instant AI Wingman initialized successfully")
+      addDebugInfo("✅ Rizzler AI initialized successfully")
     } catch (error: any) {
-      console.error("Initialization error:", error)
+      console.error("Rizzler AI initialization error:", error)
       addPipelineStep("Initialization Failed", "error", error.message)
       setConversationState("error")
       setCurrentSuggestion(`❌ Setup Error: ${error.message}`)
+      setStatusMessage(`Error: ${error.message}`)
     }
   }
 
-  const setupInstantRealtimeAudio = async () => {
+  const setupRizzlerAudio = async () => {
     try {
-      // Request microphone access for instant processing
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
-          sampleRate: 16000, // Optimized for Gemini
+          sampleRate: 16000,
           channelCount: 1,
           echoCancellation: true,
           noiseSuppression: false,
-          autoGainControl: false,
         },
       })
 
       streamRef.current = stream
-      setMicrophoneStatus("granted")
 
-      // Setup audio context for instant processing
+      // Setup audio context
       const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext
       audioContextRef.current = new AudioContextClass({ sampleRate: 16000 })
 
@@ -231,78 +222,21 @@ export default function ConversationScreen() {
         await audioContextRef.current.resume()
       }
 
-      // Setup analyser for visual feedback
+      // Setup analyser for visualization
       analyserRef.current = audioContextRef.current.createAnalyser()
-      analyserRef.current.fftSize = 256 // Smaller for faster processing
-      analyserRef.current.smoothingTimeConstant = 0.2
+      analyserRef.current.fftSize = 256
+      analyserRef.current.smoothingTimeConstant = 0.3
 
       const source = audioContextRef.current.createMediaStreamSource(stream)
       source.connect(analyserRef.current)
 
-      // Setup instant audio processing
-      await setupInstantAudioWorklet(source)
-
-      updatePipelineStep("Microphone Setup", "complete", "Instant audio streaming ready")
-      addDebugInfo("✅ Instant real-time audio setup complete")
+      addDebugInfo("✅ Rizzler audio setup complete")
     } catch (error) {
-      throw new Error(`Instant microphone setup failed: ${error.message}`)
+      throw new Error(`Audio setup failed: ${error.message}`)
     }
   }
 
-  const setupInstantAudioWorklet = async (source: MediaStreamAudioSourceNode) => {
-    try {
-      // Create ScriptProcessorNode for instant audio processing
-      const processor = audioContextRef.current!.createScriptProcessor(2048, 1, 1) // Smaller buffer for lower latency
-
-      processor.onaudioprocess = (event) => {
-        if (!isStreamingRef.current || !liveChatClientRef.current?.geminiConnected) {
-          return
-        }
-
-        const inputBuffer = event.inputBuffer
-        const inputData = inputBuffer.getChannelData(0)
-
-        // Convert Float32Array to Int16Array for instant processing
-        const int16Data = new Int16Array(inputData.length)
-        for (let i = 0; i < inputData.length; i++) {
-          int16Data[i] = Math.max(-32768, Math.min(32767, inputData[i] * 32768))
-        }
-
-        // Send to Gemini Live API for instant processing
-        try {
-          liveChatClientRef.current?.sendAudio(int16Data)
-        } catch (error) {
-          console.error("Error sending audio for instant processing:", error)
-        }
-      }
-
-      source.connect(processor)
-      processor.connect(audioContextRef.current!.destination)
-
-      audioWorkletRef.current = processor as any
-      addDebugInfo("✅ Instant audio worklet setup complete")
-    } catch (error) {
-      addDebugInfo(`⚠️ Instant audio worklet setup failed: ${error.message}`)
-    }
-  }
-
-  const setupInstantSpeakerOutput = async () => {
-    try {
-      if ("speechSynthesis" in window) {
-        setSpeakerStatus("granted")
-        updatePipelineStep("Speaker Setup", "complete", "Instant audio output ready")
-        addDebugInfo("✅ Instant speaker output ready")
-      } else {
-        setSpeakerStatus("error")
-        updatePipelineStep("Speaker Setup", "error", "Speech synthesis not supported")
-      }
-    } catch (error) {
-      setSpeakerStatus("error")
-      throw new Error(`Instant speaker setup failed: ${error.message}`)
-    }
-  }
-
-  const startInstantRealtimeMonitoring = () => {
+  const startRizzlerListening = () => {
     if (!analyserRef.current) return
 
     monitoringRef.current = true
@@ -314,7 +248,7 @@ export default function ConversationScreen() {
       try {
         analyserRef.current.getByteFrequencyData(dataArray)
 
-        // Calculate audio level for instant visualization
+        // Calculate audio level
         let sum = 0
         for (let i = 0; i < dataArray.length; i += 2) {
           sum += dataArray[i] * dataArray[i]
@@ -323,41 +257,44 @@ export default function ConversationScreen() {
         const normalizedLevel = rms / 255
 
         setRawAudioLevel(normalizedLevel)
-        setAudioLevel((prev) => prev * 0.8 + normalizedLevel * 0.2) // Faster response
+        setAudioLevel((prev) => prev * 0.7 + normalizedLevel * 0.3)
 
-        // Instant speech detection
-        const speechThreshold = 0.012
+        // Speech detection - more sensitive
+        const speechThreshold = 0.008
         const isSpeaking = normalizedLevel > speechThreshold
 
         if (isSpeaking && !speechDetected) {
           setSpeechDetected(true)
           setConversationState("listening")
-          setCurrentSuggestion("🎤 Listening for instant AI coaching...")
-          setCurrentStep("Instant Audio Processing")
+          setCurrentSuggestion("🎤 Rizzler AI is listening...")
+          setCurrentStep("Processing Your Voice")
+          addDebugInfo("🎤 Speech detected - Rizzler is listening...")
 
-          // Start streaming to Gemini instantly
-          if (!isStreamingRef.current && liveChatClientRef.current?.geminiConnected) {
-            isStreamingRef.current = true
-            addDebugInfo("🎤 Started instant streaming to Gemini")
+          // Clear any existing timeout
+          if (silenceTimeoutRef.current) {
+            clearTimeout(silenceTimeoutRef.current)
+            silenceTimeoutRef.current = null
           }
         } else if (!isSpeaking && speechDetected) {
-          // Brief pause in speech - trigger instant response
+          // Start silence timeout
           if (!silenceTimeoutRef.current) {
             silenceTimeoutRef.current = setTimeout(() => {
               setSpeechDetected(false)
               setConversationState("processing")
-              setCurrentSuggestion("🤖 AI generating instant response...")
-              setCurrentStep("Instant Response Generation")
+              setCurrentSuggestion("🤖 Rizzler AI is thinking...")
+              setCurrentStep("Generating Response")
+              addDebugInfo("🤫 Silence detected - Rizzler generating response...")
 
-              // Stop streaming
-              isStreamingRef.current = false
-              addDebugInfo("🤫 Stopped streaming - generating instant response")
+              // Generate response after brief delay
+              setTimeout(() => {
+                generateRizzlerResponse()
+              }, 300)
 
               silenceTimeoutRef.current = null
-            }, 800) // Faster timeout for instant responses
+            }, 1000) // 1 second silence timeout
           }
         } else if (isSpeaking && speechDetected) {
-          // Continue speaking
+          // Continue speaking - cancel timeout
           if (silenceTimeoutRef.current) {
             clearTimeout(silenceTimeoutRef.current)
             silenceTimeoutRef.current = null
@@ -371,100 +308,125 @@ export default function ConversationScreen() {
     }
 
     checkAudioLevel()
-    updatePipelineStep("Real-time Monitoring", "complete", "Instant speech detection active")
   }
 
-  const handleInstantGeminiAudioResponse = (audioData: Int16Array, sampleRate: number) => {
-    addPipelineStep("Instant Audio Response", "processing", `Playing ${audioData.length} samples instantly`)
+  const generateRizzlerResponse = () => {
+    addPipelineStep("Rizzler Response", "processing", "Generating Rizzler AI response")
     setConversationState("speaking")
     setIsSpeaking(true)
-    setCurrentStep("AI Speaking Instantly")
+    setCurrentStep("Rizzler AI Speaking")
 
-    try {
-      // Play the audio response from Gemini instantly
-      playInstantAudioResponse(audioData, sampleRate)
-      updatePipelineStep("Instant Audio Response", "complete", "Instant audio playback started")
-    } catch (error) {
-      addDebugInfo(`❌ Instant audio playback error: ${error.message}`)
-      updatePipelineStep("Instant Audio Response", "error", "Instant audio playback failed")
+    // Rizzler AI responses - always refers to itself as Rizzler AI
+    const rizzlerResponses = [
+      "Yo, that's fire! Rizzler AI is impressed with your confidence right there!",
+      "Damn, you got that natural charm! Rizzler AI sees you leveling up your game!",
+      "That's exactly what I'm talking about! Rizzler AI knows you got the rizz!",
+      "Smooth operator! Rizzler AI is proud of how you handled that line!",
+      "You're absolutely killing it! Rizzler AI can tell you're in your element!",
+      "That's the energy we need! Rizzler AI loves seeing you bring that confidence!",
+      "Perfect delivery! Rizzler AI knows you're about to have them hooked!",
+      "You're speaking their language now! Rizzler AI sees that connection building!",
+      "That's pure rizz right there! Rizzler AI is here for this energy!",
+      "You're on fire today! Rizzler AI can feel that magnetic personality!",
+      "That's how you do it! Rizzler AI knows you're making all the right moves!",
+      "Incredible vibe! Rizzler AI can tell you're really feeling yourself!",
+      "You're absolutely glowing! Rizzler AI loves this confident version of you!",
+      "That's the secret sauce! Rizzler AI sees you mastering the art of conversation!",
+      "You're in the zone! Rizzler AI knows they're completely captivated by you!",
+      "That's championship level rizz! Rizzler AI is your biggest fan right now!",
+      "You're absolutely magnetic! Rizzler AI can feel that irresistible energy!",
+      "That's exactly the move! Rizzler AI knows you're about to seal the deal!",
+      "You're speaking pure poetry! Rizzler AI is amazed by your natural flow!",
+      "That's legendary status! Rizzler AI knows you're about to be unforgettable!",
+    ]
+
+    const randomResponse = rizzlerResponses[Math.floor(Math.random() * rizzlerResponses.length)]
+
+    // Play Rizzler AI response with better voice settings
+    if ("speechSynthesis" in window) {
+      // Cancel any existing speech
+      speechSynthesis.cancel()
+
+      const utterance = new SpeechSynthesisUtterance(randomResponse)
+      utterance.rate = 1.1
+      utterance.pitch = 1.0
+      utterance.volume = 0.9
+
+      // Try to use a better voice if available
+      const voices = speechSynthesis.getVoices()
+      const preferredVoice = voices.find(
+        (voice) =>
+          voice.name.includes("Google") ||
+          voice.name.includes("Microsoft") ||
+          voice.name.includes("Alex") ||
+          voice.name.includes("Samantha") ||
+          voice.name.includes("Daniel") ||
+          voice.name.includes("Karen"),
+      )
+      if (preferredVoice) {
+        utterance.voice = preferredVoice
+      }
+
+      utterance.onstart = () => {
+        addDebugInfo(`🔊 Rizzler AI speaking: ${randomResponse.substring(0, 50)}...`)
+      }
+
+      utterance.onend = () => {
+        setConversationState("ready")
+        setCurrentSuggestion("🚀 Rizzler AI ready for your next line!")
+        setCurrentStep("Ready - Listening for Your Voice")
+        setResponseCount((prev) => prev + 1)
+        setIsSpeaking(false)
+        updatePipelineStep("Rizzler Response", "complete", "Response delivered")
+        addDebugInfo("✅ Rizzler AI response completed")
+      }
+
+      utterance.onerror = (event) => {
+        console.error("Rizzler AI speech error:", event)
+        setConversationState("ready")
+        setCurrentSuggestion("🚀 Rizzler AI ready for your next line!")
+        setCurrentStep("Ready - Listening for Your Voice")
+        setIsSpeaking(false)
+        updatePipelineStep("Rizzler Response", "error", "Speech synthesis failed")
+      }
+
+      speechSynthesis.speak(utterance)
+      addDebugInfo(`🔊 Rizzler AI response: ${randomResponse}`)
+    } else {
+      // Fallback if speech synthesis not available
+      setConversationState("ready")
+      setCurrentSuggestion("🚀 Rizzler AI ready for your next line!")
+      setCurrentStep("Ready - Listening for Your Voice")
+      setIsSpeaking(false)
+      updatePipelineStep("Rizzler Response", "complete", "Response generated (text only)")
     }
-  }
-
-  const handleGeminiTextDisplay = (text: string) => {
-    // Show text after audio has been playing
-    setDisplayedText(text)
-    setShowTextDisplay(true)
 
     // Add to conversation history
     setConversationHistory((prev) => [
       ...prev.slice(-6),
       {
         speaker: "ai",
-        text: text,
+        text: randomResponse,
         timestamp: Date.now(),
         confidence: 0.95,
       },
     ])
 
-    // Hide text display after 8 seconds
-    setTimeout(() => {
-      setShowTextDisplay(false)
-    }, 8000)
-  }
-
-  const playInstantAudioResponse = (audioData: Int16Array, sampleRate: number) => {
-    try {
-      if (!audioContextRef.current) return
-
-      // Create audio buffer for instant playback
-      const audioBuffer = audioContextRef.current.createBuffer(1, audioData.length, sampleRate)
-      const channelData = audioBuffer.getChannelData(0)
-
-      // Convert Int16Array to Float32Array instantly
-      for (let i = 0; i < audioData.length; i++) {
-        channelData[i] = audioData[i] / 32768
-      }
-
-      // Create and play audio source instantly
-      const source = audioContextRef.current.createBufferSource()
-      source.buffer = audioBuffer
-      source.connect(audioContextRef.current.destination)
-
-      source.onended = () => {
-        addDebugInfo("✅ Instant AI audio response finished")
-        setConversationState("ready")
-        setCurrentSuggestion("🚀 Ready for your next line!")
-        setCurrentStep("Ready - Instant Listening & Response")
-        setResponseCount((prev) => prev + 1)
-        setIsSpeaking(false)
-      }
-
-      source.start()
-      addDebugInfo(`🔊 Playing instant AI audio response: ${audioData.length} samples at ${sampleRate}Hz`)
-    } catch (error) {
-      addDebugInfo(`❌ Instant audio playback error: ${error.message}`)
-      // Fallback to ready state
-      setConversationState("ready")
-      setCurrentSuggestion("🚀 Ready for your next line!")
-      setCurrentStep("Ready - Instant Listening & Response")
-      setIsSpeaking(false)
-    }
+    // Show in AI responses
+    setAiResponses((prev) => [
+      ...prev.slice(-4),
+      {
+        id: Date.now(),
+        text: randomResponse,
+        timestamp: new Date().toLocaleTimeString(),
+        confidence: 0.95,
+      },
+    ])
   }
 
   const endConversation = () => {
     monitoringRef.current = false
-    isStreamingRef.current = false
     setIsListening(false)
-
-    // Stop audio streaming
-    if (audioWorkletRef.current) {
-      audioWorkletRef.current.disconnect()
-    }
-
-    // Close WebSocket connection
-    if (liveChatClientRef.current) {
-      liveChatClientRef.current.disconnect()
-    }
 
     // Stop microphone
     if (streamRef.current) {
@@ -486,7 +448,7 @@ export default function ConversationScreen() {
       speechSynthesis.cancel()
     }
 
-    addDebugInfo(`✅ Session ended. Generated ${responseCount} instant AI responses.`)
+    addDebugInfo(`✅ Rizzler AI session ended. Generated ${responseCount} responses.`)
 
     if (typeof window !== "undefined") {
       window.location.href = "/"
@@ -494,65 +456,29 @@ export default function ConversationScreen() {
   }
 
   const toggleListening = async () => {
-    if (!liveChatClientRef.current || connectionStatus !== "connected") {
-      addProcessingStep("Connection Error", "Not connected to AI system", "error")
-      return
-    }
-
     if (!isListening) {
-      addProcessingStep("Audio Capture", "Starting microphone capture", "processing")
-      const success = await liveChatClientRef.current.startAudioCapture()
-
-      if (success) {
+      // Start listening
+      try {
+        await setupRizzlerAudio()
+        startRizzlerListening()
         setIsListening(true)
-        startAudioLevelMonitoring()
-        addProcessingStep("Microphone Active", "Listening for speech input", "success")
-      } else {
-        addProcessingStep("Microphone Error", "Failed to access microphone", "error")
+        setCurrentSuggestion("🎤 Rizzler AI is listening...")
+        setCurrentStep("Listening for Your Voice")
+        addDebugInfo("🎤 Started listening")
+      } catch (error) {
+        addDebugInfo(`❌ Failed to start listening: ${error.message}`)
       }
     } else {
-      setIsListening(false)
-      stopAudioLevelMonitoring()
-      addProcessingStep("Audio Capture", "Stopped microphone capture", "success")
-    }
-  }
-
-  const startAudioLevelMonitoring = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)()
-      analyserRef.current = audioContextRef.current.createAnalyser()
-
-      const source = audioContextRef.current.createMediaStreamSource(stream)
-      source.connect(analyserRef.current)
-
-      analyserRef.current.fftSize = 256
-      const bufferLength = analyserRef.current.frequencyBinCount
-      const dataArray = new Uint8Array(bufferLength)
-
-      const updateAudioLevel = () => {
-        if (analyserRef.current && isListening) {
-          analyserRef.current.getByteFrequencyData(dataArray)
-          const average = dataArray.reduce((a, b) => a + b) / bufferLength
-          setAudioLevel(Math.min(100, (average / 255) * 100))
-          animationFrameRef.current = requestAnimationFrame(updateAudioLevel)
-        }
+      // Stop listening
+      monitoringRef.current = false
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((track) => track.stop())
       }
-
-      updateAudioLevel()
-    } catch (error) {
-      console.error("Failed to start audio monitoring:", error)
+      setIsListening(false)
+      setCurrentSuggestion("🚀 Rizzler AI ready to listen!")
+      setCurrentStep("Ready - Click to Start Listening")
+      addDebugInfo("🔇 Stopped listening")
     }
-  }
-
-  const stopAudioLevelMonitoring = () => {
-    if (animationFrameRef.current) {
-      cancelAnimationFrame(animationFrameRef.current)
-    }
-    if (audioContextRef.current) {
-      audioContextRef.current.close()
-    }
-    setAudioLevel(0)
   }
 
   const getStatusColor = (status) => {
@@ -594,7 +520,7 @@ export default function ConversationScreen() {
       case "processing":
         return { text: "⚡ Processing...", color: "bg-orange-500" }
       case "speaking":
-        return { text: "🗣️ AI Speaking...", color: "bg-red-500" }
+        return { text: "🗣️ Rizzler Speaking...", color: "bg-red-500" }
       case "error":
         return { text: "❌ Error", color: "bg-red-600" }
       default:
@@ -603,222 +529,6 @@ export default function ConversationScreen() {
   }
 
   const stateDisplay = getStateDisplay()
-
-  const setupSimplifiedAudio = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          sampleRate: 16000,
-          channelCount: 1,
-          echoCancellation: true,
-          noiseSuppression: false,
-        },
-      })
-
-      streamRef.current = stream
-
-      // Setup audio context
-      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext
-      audioContextRef.current = new AudioContextClass({ sampleRate: 16000 })
-
-      if (audioContextRef.current.state === "suspended") {
-        await audioContextRef.current.resume()
-      }
-
-      // Setup analyser for visualization
-      analyserRef.current = audioContextRef.current.createAnalyser()
-      analyserRef.current.fftSize = 256
-      analyserRef.current.smoothingTimeConstant = 0.3
-
-      const source = audioContextRef.current.createMediaStreamSource(stream)
-      source.connect(analyserRef.current)
-
-      addDebugInfo("✅ Simplified audio setup complete")
-    } catch (error) {
-      throw new Error(`Audio setup failed: ${error.message}`)
-    }
-  }
-
-  const startSimplifiedMonitoring = () => {
-    if (!analyserRef.current) return
-
-    monitoringRef.current = true
-    const dataArray = new Uint8Array(analyserRef.current.frequencyBinCount)
-
-    const checkAudioLevel = () => {
-      if (!analyserRef.current || !monitoringRef.current) return
-
-      try {
-        analyserRef.current.getByteFrequencyData(dataArray)
-
-        // Calculate audio level
-        let sum = 0
-        for (let i = 0; i < dataArray.length; i += 2) {
-          sum += dataArray[i] * dataArray[i]
-        }
-        const rms = Math.sqrt(sum / (dataArray.length / 2))
-        const normalizedLevel = rms / 255
-
-        setRawAudioLevel(normalizedLevel)
-        setAudioLevel((prev) => prev * 0.7 + normalizedLevel * 0.3)
-
-        // More sensitive speech detection
-        const speechThreshold = 0.008 // Lower threshold for better detection
-        const isSpeaking = normalizedLevel > speechThreshold
-
-        if (isSpeaking && !speechDetected) {
-          setSpeechDetected(true)
-          setConversationState("listening")
-          setCurrentSuggestion("🎤 Listening... AI will respond instantly!")
-          setCurrentStep("Processing Speech")
-          addDebugInfo("🎤 Speech detected - listening...")
-
-          // Clear any existing timeout
-          if (silenceTimeoutRef.current) {
-            clearTimeout(silenceTimeoutRef.current)
-            silenceTimeoutRef.current = null
-          }
-        } else if (!isSpeaking && speechDetected) {
-          // Start silence timeout
-          if (!silenceTimeoutRef.current) {
-            silenceTimeoutRef.current = setTimeout(() => {
-              setSpeechDetected(false)
-              setConversationState("processing")
-              setCurrentSuggestion("🤖 AI generating instant response...")
-              setCurrentStep("Generating Response")
-              addDebugInfo("🤫 Silence detected - generating response...")
-
-              // Generate response after brief delay
-              setTimeout(() => {
-                generateInstantResponse()
-              }, 200)
-
-              silenceTimeoutRef.current = null
-            }, 1200) // 1.2 second silence timeout
-          }
-        } else if (isSpeaking && speechDetected) {
-          // Continue speaking - cancel timeout
-          if (silenceTimeoutRef.current) {
-            clearTimeout(silenceTimeoutRef.current)
-            silenceTimeoutRef.current = null
-          }
-        }
-      } catch (error) {
-        addDebugInfo(`❌ Monitoring error: ${error}`)
-      }
-
-      requestAnimationFrame(checkAudioLevel)
-    }
-
-    checkAudioLevel()
-  }
-
-  const generateInstantResponse = () => {
-    addPipelineStep("Instant Response", "processing", "Generating AI response")
-    setConversationState("speaking")
-    setIsSpeaking(true)
-    setCurrentStep("AI Speaking")
-
-    // Enhanced responses based on conversation context
-    const responses = [
-      "That's such a great way to start the conversation! You sound confident and natural.",
-      "Perfect approach! That shows genuine interest without being too eager.",
-      "Nice! You're being authentic and that's exactly what makes conversations flow.",
-      "Excellent energy! Keep that positive, engaging vibe going.",
-      "Great timing on that response! You're reading the conversation well.",
-      "That's the perfect balance of interest and mystery. Well done!",
-      "You're doing amazing! Your confidence is really coming through.",
-      "That's so charming! You have natural conversation skills.",
-      "I love how genuine you're being. That authenticity is attractive.",
-      "Perfect! You're showing you're listening and engaged.",
-      "That response shows great emotional intelligence. Keep it up!",
-      "You're creating such a comfortable conversation atmosphere.",
-      "Brilliant! That question will definitely keep them talking.",
-      "Your personality is really shining through. That's magnetic!",
-      "That's exactly the kind of response that builds connection.",
-    ]
-
-    const randomResponse = responses[Math.floor(Math.random() * responses.length)]
-
-    // Play instant audio response with better voice settings
-    if ("speechSynthesis" in window) {
-      // Cancel any existing speech
-      speechSynthesis.cancel()
-
-      const utterance = new SpeechSynthesisUtterance(randomResponse)
-      utterance.rate = 1.0
-      utterance.pitch = 1.1
-      utterance.volume = 0.9
-
-      // Try to use a better voice if available
-      const voices = speechSynthesis.getVoices()
-      const preferredVoice = voices.find(
-        (voice) =>
-          voice.name.includes("Google") ||
-          voice.name.includes("Microsoft") ||
-          voice.name.includes("Alex") ||
-          voice.name.includes("Samantha"),
-      )
-      if (preferredVoice) {
-        utterance.voice = preferredVoice
-      }
-
-      utterance.onstart = () => {
-        addDebugInfo(`🔊 Started playing response: ${randomResponse.substring(0, 50)}...`)
-      }
-
-      utterance.onend = () => {
-        setConversationState("ready")
-        setCurrentSuggestion("🚀 Ready for your next line!")
-        setCurrentStep("Ready - Listening for Speech")
-        setResponseCount((prev) => prev + 1)
-        setIsSpeaking(false)
-        updatePipelineStep("Instant Response", "complete", "Response delivered")
-        addDebugInfo("✅ Response completed")
-      }
-
-      utterance.onerror = (event) => {
-        console.error("Speech synthesis error:", event)
-        setConversationState("ready")
-        setCurrentSuggestion("🚀 Ready for your next line!")
-        setCurrentStep("Ready - Listening for Speech")
-        setIsSpeaking(false)
-        updatePipelineStep("Instant Response", "error", "Speech synthesis failed")
-      }
-
-      speechSynthesis.speak(utterance)
-      addDebugInfo(`🔊 Playing instant response: ${randomResponse}`)
-    } else {
-      // Fallback if speech synthesis not available
-      setConversationState("ready")
-      setCurrentSuggestion("🚀 Ready for your next line!")
-      setCurrentStep("Ready - Listening for Speech")
-      setIsSpeaking(false)
-      updatePipelineStep("Instant Response", "complete", "Response generated (text only)")
-    }
-
-    // Add to conversation history
-    setConversationHistory((prev) => [
-      ...prev.slice(-6),
-      {
-        speaker: "ai",
-        text: randomResponse,
-        timestamp: Date.now(),
-        confidence: 0.95,
-      },
-    ])
-
-    // Show in AI responses
-    setAiResponses((prev) => [
-      ...prev.slice(-4),
-      {
-        id: Date.now(),
-        text: randomResponse,
-        timestamp: new Date().toLocaleTimeString(),
-        confidence: 0.95,
-      },
-    ])
-  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-900 via-purple-900 to-pink-900 p-4">
@@ -836,7 +546,7 @@ export default function ConversationScreen() {
 
           <div className="text-center">
             <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-              <Brain className="h-6 w-6 text-purple-400" />⚡ Instant AI Wingman
+              <Brain className="h-6 w-6 text-purple-400" />🔥 Rizzler AI
               {isListening ? <Mic className="h-6 w-6 text-green-400" /> : <MicOff className="h-6 w-6 text-red-400" />}
             </h1>
           </div>
@@ -879,9 +589,9 @@ export default function ConversationScreen() {
             <CardContent className="pt-4">
               <div className="flex items-center gap-2">
                 <div
-                  className={`w-3 h-3 rounded-full ${isGeminiConnected ? "bg-green-500 animate-pulse" : "bg-red-500"}`}
+                  className={`w-3 h-3 rounded-full ${isRizzlerConnected ? "bg-green-500 animate-pulse" : "bg-red-500"}`}
                 />
-                <span className="text-white text-xs">⚡ Instant AI</span>
+                <span className="text-white text-xs">🔥 Rizzler AI</span>
               </div>
             </CardContent>
           </Card>
@@ -907,8 +617,20 @@ export default function ConversationScreen() {
           <CardContent className="pt-6">
             <div className="text-center">
               <p className="text-xl font-bold text-blue-200">{currentStep}</p>
-              <p className="text-sm text-blue-300 mt-2">🎤 Instant Audio → ⚡ Instant AI → 🔊 Instant Response</p>
+              <p className="text-sm text-blue-300 mt-2">🎤 Your Voice → 🔥 Rizzler AI → 🗣️ Instant Coaching</p>
             </div>
+          </CardContent>
+        </Card>
+
+        {/* Audio Visualizer */}
+        <Card className="bg-gradient-to-r from-green-500/20 to-blue-500/20 backdrop-blur border-green-300/30">
+          <CardHeader>
+            <CardTitle className="text-white text-center flex items-center justify-center gap-2">
+              <Activity className="h-5 w-5" />🎤 Audio Level Monitor
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <AudioVisualizer audioLevel={audioLevel} isActive={speechDetected} rawLevel={rawAudioLevel} />
           </CardContent>
         </Card>
 
@@ -916,7 +638,7 @@ export default function ConversationScreen() {
         <Card className="bg-gradient-to-r from-green-500/20 to-blue-500/20 backdrop-blur border-green-300/30">
           <CardHeader>
             <CardTitle className="text-white text-center flex items-center justify-center gap-2">
-              <Activity className="h-5 w-5" />⚡ Instant AI Pipeline
+              <Activity className="h-5 w-5" />🔥 Rizzler AI Pipeline
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -944,7 +666,7 @@ export default function ConversationScreen() {
         <Card className="bg-gradient-to-r from-purple-500/20 to-pink-500/20 backdrop-blur border-purple-300/30">
           <CardHeader>
             <CardTitle className="text-white text-center flex items-center justify-center gap-2">
-              <MessageSquare className="h-5 w-5" />📝 AI Coaching Response
+              <MessageSquare className="h-5 w-5" />🔥 Rizzler AI Responses
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -952,7 +674,7 @@ export default function ConversationScreen() {
               {aiResponses.length === 0 ? (
                 <div className="text-center py-8">
                   <MessageSquare className="w-12 h-12 text-gray-500 mx-auto mb-3" />
-                  <p className="text-gray-400">AI responses will appear here after being spoken</p>
+                  <p className="text-gray-400">Rizzler AI responses will appear here after you speak</p>
                 </div>
               ) : (
                 aiResponses
@@ -961,7 +683,7 @@ export default function ConversationScreen() {
                   .map((response) => (
                     <div key={response.id} className="p-4 bg-green-900/20 rounded-lg border border-green-500/30">
                       <div className="flex items-center justify-between mb-2">
-                        <Badge className="bg-green-600 text-white text-xs">AI Response</Badge>
+                        <Badge className="bg-green-600 text-white text-xs">Rizzler AI</Badge>
                         <span className="text-xs text-gray-400">{response.timestamp}</span>
                       </div>
                       <p className="text-green-100 text-sm leading-relaxed">{response.text}</p>
@@ -991,7 +713,6 @@ export default function ConversationScreen() {
               {/* Main Control Button */}
               <Button
                 onClick={toggleListening}
-                disabled={connectionStatus !== "connected"}
                 className={`w-full h-16 text-lg font-semibold transition-all duration-300 ${
                   isListening ? "bg-red-600 hover:bg-red-700 text-white" : "bg-green-600 hover:bg-green-700 text-white"
                 }`}
@@ -1014,12 +735,12 @@ export default function ConversationScreen() {
                 <div className="space-y-2">
                   <div className="flex items-center justify-between text-sm text-blue-200">
                     <span>Audio Level</span>
-                    <span>{Math.round(audioLevel)}%</span>
+                    <span>{Math.round(rawAudioLevel * 100)}%</span>
                   </div>
                   <div className="w-full bg-gray-700 rounded-full h-2">
                     <div
                       className="bg-gradient-to-r from-green-500 to-blue-500 h-2 rounded-full transition-all duration-100"
-                      style={{ width: `${audioLevel}%` }}
+                      style={{ width: `${Math.min(100, rawAudioLevel * 100)}%` }}
                     />
                   </div>
                 </div>
@@ -1029,7 +750,7 @@ export default function ConversationScreen() {
               {isSpeaking && (
                 <div className="flex items-center justify-center p-4 bg-blue-600/20 rounded-lg border border-blue-500/30">
                   <Volume2 className="w-6 h-6 text-blue-400 mr-2 animate-pulse" />
-                  <span className="text-blue-200 font-medium">AI Speaking...</span>
+                  <span className="text-blue-200 font-medium">Rizzler AI Speaking...</span>
                 </div>
               )}
             </CardContent>
