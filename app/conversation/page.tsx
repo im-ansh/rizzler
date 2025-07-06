@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Activity, Phone, ArrowLeft, Mic, MicOff, Brain, MessageSquare } from "lucide-react"
+import { Activity, Phone, ArrowLeft, Mic, MicOff, Brain, MessageSquare, Volume2, Settings, Zap } from "lucide-react"
 import { LiveChatClient } from "@/lib/websocket-client"
 
 type ConversationState = "initializing" | "listening" | "processing" | "speaking" | "ready" | "error"
@@ -50,6 +50,11 @@ export default function ConversationScreen() {
   const [conversationState, setConversationState] = useState<ConversationState>("initializing")
   const [currentSuggestion, setCurrentSuggestion] = useState("Starting AI Wingman...")
   const [isListening, setIsListening] = useState(false)
+  const [isSpeaking, setIsSpeaking] = useState(false)
+  const [connectionStatus, setConnectionStatus] = useState("disconnected")
+  const [statusMessage, setStatusMessage] = useState("Initializing...")
+  const [aiResponses, setAiResponses] = useState([])
+  const [processingSteps, setProcessingSteps] = useState([])
   const [audioLevel, setAudioLevel] = useState(0)
   const [rawAudioLevel, setRawAudioLevel] = useState(0)
   const [speechDetected, setSpeechDetected] = useState(false)
@@ -82,14 +87,30 @@ export default function ConversationScreen() {
 
   // WebSocket client ref
   const liveChatClientRef = useRef<LiveChatClient | null>(null)
+  const wsClientRef = useRef(null)
 
   // Audio processing for real-time streaming
   const audioWorkletRef = useRef<AudioWorkletNode | null>(null)
   const isStreamingRef = useRef<boolean>(false)
+  const animationFrameRef = useRef(null)
 
   const addDebugInfo = (info: string) => {
     console.log("DEBUG:", info)
     setDebugInfo((prev) => [...prev.slice(-4), `${new Date().toLocaleTimeString()}: ${info}`])
+  }
+
+  const addProcessingStep = (step, description, status) => {
+    const timestamp = new Date().toLocaleTimeString()
+    setProcessingSteps((prev) => [
+      ...prev.slice(-4),
+      {
+        id: Date.now(),
+        step,
+        description,
+        status,
+        timestamp,
+      },
+    ])
   }
 
   const addPipelineStep = (step: string, status: "pending" | "processing" | "complete" | "error", details?: string) => {
@@ -384,6 +405,7 @@ export default function ConversationScreen() {
   const handleInstantGeminiAudioResponse = (audioData: Int16Array, sampleRate: number) => {
     addPipelineStep("Instant Audio Response", "processing", `Playing ${audioData.length} samples instantly`)
     setConversationState("speaking")
+    setIsSpeaking(true)
     setCurrentStep("AI Speaking Instantly")
 
     try {
@@ -442,6 +464,7 @@ export default function ConversationScreen() {
         setCurrentSuggestion("🚀 Ready for your next line!")
         setCurrentStep("Ready - Instant Listening & Response")
         setResponseCount((prev) => prev + 1)
+        setIsSpeaking(false)
       }
 
       source.start()
@@ -452,6 +475,7 @@ export default function ConversationScreen() {
       setConversationState("ready")
       setCurrentSuggestion("🚀 Ready for your next line!")
       setCurrentStep("Ready - Instant Listening & Response")
+      setIsSpeaking(false)
     }
   }
 
@@ -494,6 +518,96 @@ export default function ConversationScreen() {
 
     if (typeof window !== "undefined") {
       window.location.href = "/"
+    }
+  }
+
+  const toggleListening = async () => {
+    if (!liveChatClientRef.current || connectionStatus !== "connected") {
+      addProcessingStep("Connection Error", "Not connected to AI system", "error")
+      return
+    }
+
+    if (!isListening) {
+      addProcessingStep("Audio Capture", "Starting microphone capture", "processing")
+      const success = await liveChatClientRef.current.startAudioCapture()
+
+      if (success) {
+        setIsListening(true)
+        startAudioLevelMonitoring()
+        addProcessingStep("Microphone Active", "Listening for speech input", "success")
+      } else {
+        addProcessingStep("Microphone Error", "Failed to access microphone", "error")
+      }
+    } else {
+      setIsListening(false)
+      stopAudioLevelMonitoring()
+      addProcessingStep("Audio Capture", "Stopped microphone capture", "success")
+    }
+  }
+
+  const startAudioLevelMonitoring = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)()
+      analyserRef.current = audioContextRef.current.createAnalyser()
+
+      const source = audioContextRef.current.createMediaStreamSource(stream)
+      source.connect(analyserRef.current)
+
+      analyserRef.current.fftSize = 256
+      const bufferLength = analyserRef.current.frequencyBinCount
+      const dataArray = new Uint8Array(bufferLength)
+
+      const updateAudioLevel = () => {
+        if (analyserRef.current && isListening) {
+          analyserRef.current.getByteFrequencyData(dataArray)
+          const average = dataArray.reduce((a, b) => a + b) / bufferLength
+          setAudioLevel(Math.min(100, (average / 255) * 100))
+          animationFrameRef.current = requestAnimationFrame(updateAudioLevel)
+        }
+      }
+
+      updateAudioLevel()
+    } catch (error) {
+      console.error("Failed to start audio monitoring:", error)
+    }
+  }
+
+  const stopAudioLevelMonitoring = () => {
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current)
+    }
+    if (audioContextRef.current) {
+      audioContextRef.current.close()
+    }
+    setAudioLevel(0)
+  }
+
+  const getStatusColor = (status) => {
+    switch (status) {
+      case "connected":
+        return "bg-green-500"
+      case "processing":
+        return "bg-blue-500"
+      case "error":
+        return "bg-red-500"
+      case "success":
+        return "bg-green-500"
+      default:
+        return "bg-gray-500"
+    }
+  }
+
+  const getStatusIcon = (status) => {
+    switch (status) {
+      case "processing":
+        return <Brain className="w-4 h-4 animate-spin" />
+      case "success":
+        return <Zap className="w-4 h-4" />
+      case "error":
+        return <MessageSquare className="w-4 h-4" />
+      default:
+        return <Settings className="w-4 h-4" />
     }
   }
 
@@ -618,29 +732,19 @@ export default function ConversationScreen() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-2 max-h-48 overflow-y-auto">
+            <div className="space-y-3 max-h-96 overflow-y-auto">
               {pipelineSteps.slice(-6).map((step, index) => (
-                <div key={index} className="flex items-center gap-3 p-2 rounded-lg bg-white/5">
-                  <div
-                    className={`w-3 h-3 rounded-full flex-shrink-0 ${
-                      step.status === "complete"
-                        ? "bg-green-500"
-                        : step.status === "processing"
-                          ? "bg-yellow-500 animate-pulse"
-                          : step.status === "error"
-                            ? "bg-red-500"
-                            : "bg-gray-500"
-                    }`}
-                  />
+                <div
+                  key={index}
+                  className="flex items-start gap-3 p-3 bg-gray-800/50 rounded-lg border border-gray-700/50"
+                >
+                  <div className={`p-1 rounded-full ${getStatusColor(step.status)}`}>{getStatusIcon(step.status)}</div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between">
-                      <span className="text-white text-sm font-medium truncate">{step.step}</span>
-                      <div className="flex items-center gap-2 flex-shrink-0 ml-2">
-                        {step.duration && <span className="text-xs text-green-400">{step.duration}ms</span>}
-                        <span className="text-xs text-gray-400">{new Date(step.timestamp).toLocaleTimeString()}</span>
-                      </div>
+                      <h4 className="text-white font-medium text-sm">{step.step}</h4>
+                      <span className="text-xs text-gray-400">{new Date(step.timestamp).toLocaleTimeString()}</span>
                     </div>
-                    {step.details && <p className="text-xs text-gray-300 mt-1 truncate">{step.details}</p>}
+                    <p className="text-gray-300 text-xs mt-1">{step.details}</p>
                   </div>
                 </div>
               ))}
@@ -648,98 +752,116 @@ export default function ConversationScreen() {
           </CardContent>
         </Card>
 
-        {/* Text Display Window (shown after audio) */}
-        {showTextDisplay && displayedText && (
-          <Card className="bg-gradient-to-r from-purple-500/20 to-pink-500/20 backdrop-blur border-purple-300/30 animate-in slide-in-from-bottom-4">
-            <CardHeader>
-              <CardTitle className="text-white text-center flex items-center justify-center gap-2">
-                <MessageSquare className="h-5 w-5" />📝 AI Coaching Response
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-center">
-                <div className="bg-white/10 rounded-lg p-4">
-                  <p className="text-lg font-medium text-white leading-relaxed">"{displayedText}"</p>
-                </div>
-                <div className="flex items-center justify-center gap-2 text-purple-300 mt-3">
-                  <MessageSquare className="h-4 w-4" />
-                  <span className="text-sm">💬 AI coaching suggestion displayed after audio</span>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Main Status Display */}
+        {/* AI Response History */}
         <Card className="bg-gradient-to-r from-purple-500/20 to-pink-500/20 backdrop-blur border-purple-300/30">
           <CardHeader>
             <CardTitle className="text-white text-center flex items-center justify-center gap-2">
-              <Brain className="h-5 w-5" />⚡ Instant AI Wingman Status
+              <MessageSquare className="h-5 w-5" />📝 AI Coaching Response
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-center">
-              <p className="text-xl font-bold text-white leading-relaxed min-h-[3rem] flex items-center justify-center px-4">
-                {currentSuggestion}
-              </p>
+            <div className="space-y-3 max-h-96 overflow-y-auto">
+              {aiResponses.length === 0 ? (
+                <div className="text-center py-8">
+                  <MessageSquare className="w-12 h-12 text-gray-500 mx-auto mb-3" />
+                  <p className="text-gray-400">AI responses will appear here after being spoken</p>
+                </div>
+              ) : (
+                aiResponses
+                  .slice()
+                  .reverse()
+                  .map((response) => (
+                    <div key={response.id} className="p-4 bg-green-900/20 rounded-lg border border-green-500/30">
+                      <div className="flex items-center justify-between mb-2">
+                        <Badge className="bg-green-600 text-white text-xs">AI Response</Badge>
+                        <span className="text-xs text-gray-400">{response.timestamp}</span>
+                      </div>
+                      <p className="text-green-100 text-sm leading-relaxed">{response.text}</p>
+                    </div>
+                  ))
+              )}
             </div>
           </CardContent>
         </Card>
 
-        {/* Audio Monitor */}
-        <Card className="bg-white/5 backdrop-blur border-white/10">
-          <CardContent className="pt-6">
-            <div className="text-center space-y-4">
-              <h3 className="text-white font-semibold">🎤 Instant Audio Stream</h3>
-              <AudioVisualizer audioLevel={audioLevel} isActive={speechDetected} rawLevel={rawAudioLevel} />
-              <div className="text-xs text-gray-400">
-                {isGeminiConnected ? "⚡ Streaming to Instant AI" : "⚠️ Waiting for AI connection"}
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Conversation History */}
-        {conversationHistory.length > 0 && (
-          <Card className="bg-white/5 backdrop-blur border-white/10">
+        {/* Main Control Panel */}
+        <div className="lg:col-span-1">
+          <Card className="bg-black/20 border-blue-500/30 backdrop-blur-sm">
             <CardHeader>
-              <CardTitle className="text-white text-sm">💬 Recent AI Coaching</CardTitle>
+              <CardTitle className="text-white flex items-center gap-2">
+                <Mic className="w-5 h-5" />
+                Voice Control
+              </CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className="space-y-2 max-h-32 overflow-y-auto">
-                {conversationHistory.slice(-4).map((entry, index) => (
-                  <div key={index} className="text-sm">
-                    <span className="font-semibold text-purple-300">⚡ Instant AI:</span>
-                    <span className="text-gray-300 ml-2">"{entry.text}"</span>
+            <CardContent className="space-y-4">
+              {/* Connection Status */}
+              <div className="flex items-center justify-between">
+                <span className="text-blue-200">Status:</span>
+                <Badge className={`${getStatusColor(connectionStatus)} text-white`}>{connectionStatus}</Badge>
+              </div>
+
+              {/* Main Control Button */}
+              <Button
+                onClick={toggleListening}
+                disabled={connectionStatus !== "connected"}
+                className={`w-full h-16 text-lg font-semibold transition-all duration-300 ${
+                  isListening ? "bg-red-600 hover:bg-red-700 text-white" : "bg-green-600 hover:bg-green-700 text-white"
+                }`}
+              >
+                {isListening ? (
+                  <>
+                    <MicOff className="w-6 h-6 mr-2" />
+                    Stop Listening
+                  </>
+                ) : (
+                  <>
+                    <Mic className="w-6 h-6 mr-2" />
+                    Start Listening
+                  </>
+                )}
+              </Button>
+
+              {/* Audio Level Indicator */}
+              {isListening && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-sm text-blue-200">
+                    <span>Audio Level</span>
+                    <span>{Math.round(audioLevel)}%</span>
                   </div>
-                ))}
+                  <div className="w-full bg-gray-700 rounded-full h-2">
+                    <div
+                      className="bg-gradient-to-r from-green-500 to-blue-500 h-2 rounded-full transition-all duration-100"
+                      style={{ width: `${audioLevel}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Speaking Indicator */}
+              {isSpeaking && (
+                <div className="flex items-center justify-center p-4 bg-blue-600/20 rounded-lg border border-blue-500/30">
+                  <Volume2 className="w-6 h-6 text-blue-400 mr-2 animate-pulse" />
+                  <span className="text-blue-200 font-medium">AI Speaking...</span>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Status Bar */}
+        <div className="mt-6">
+          <Card className="bg-black/20 border-gray-500/30 backdrop-blur-sm">
+            <CardContent className="py-3">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-gray-300">System Status: {statusMessage}</span>
+                <div className="flex items-center gap-4">
+                  <span className="text-gray-400">Responses: {aiResponses.length}</span>
+                  <div className={`w-3 h-3 rounded-full ${getStatusColor(connectionStatus)}`} />
+                </div>
               </div>
             </CardContent>
           </Card>
-        )}
-
-        {/* System Info */}
-        <Card className="bg-yellow-500/10 border-yellow-400/30">
-          <CardContent className="pt-6">
-            <div className="text-center space-y-2">
-              <h3 className="text-yellow-200 font-semibold">⚡ Instant AI Wingman System</h3>
-              <div className="grid grid-cols-3 gap-4 text-sm">
-                <div>
-                  <p className="text-yellow-100">Instant Audio</p>
-                  <p className="text-xs text-yellow-200">16kHz streaming</p>
-                </div>
-                <div>
-                  <p className="text-yellow-100">Instant AI</p>
-                  <p className="text-xs text-yellow-200">Sub-second responses</p>
-                </div>
-                <div>
-                  <p className="text-yellow-100">Instant Playback</p>
-                  <p className="text-xs text-yellow-200">24kHz audio</p>
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+        </div>
       </div>
     </div>
   )

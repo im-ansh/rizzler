@@ -4,12 +4,12 @@
   "private": true,
   "scripts": {
     "build": "next build",
-    "dev": "node server.js",
+    "dev": "next dev",
     "lint": "next lint",
-    "start": "NODE_ENV=production node server.js"
+    "start": "next start"
   },
   "dependencies": {
-    "@ai-sdk/google": "^0.0.54",
+    "@ai-sdk/google": "^0.0.52",
     "@ai-sdk/openai": "^0.0.66",
     "@radix-ui/react-accordion": "latest",
     "@radix-ui/react-alert-dialog": "latest",
@@ -30,7 +30,6 @@
     "@radix-ui/react-scroll-area": "latest",
     "@radix-ui/react-select": "latest",
     "@radix-ui/react-separator": "latest",
-    "@radix-ui/react-sheet": "^1.1.0",
     "@radix-ui/react-slider": "latest",
     "@radix-ui/react-slot": "latest",
     "@radix-ui/react-switch": "latest",
@@ -39,7 +38,7 @@
     "@radix-ui/react-toggle": "latest",
     "@radix-ui/react-toggle-group": "latest",
     "@radix-ui/react-tooltip": "latest",
-    "ai": "^4.0.17",
+    "ai": "^3.4.32",
     "bufferutil": "latest",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

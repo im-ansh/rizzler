@@ -7,11 +7,11 @@ let wss: WebSocketServer | null = null
 
 // Simple HTTP endpoint for WebSocket info
 export async function GET(request: NextRequest) {
-  return Response.json({
-    message: "AI Wingman WebSocket proxy ready",
-    status: "available",
-    websocket_url:
-      process.env.NODE_ENV === "production" ? "wss://your-domain.com/api/websocket" : "ws://localhost:3001",
+  return new Response("WebSocket endpoint - use WebSocket connection", {
+    status: 200,
+    headers: {
+      "Content-Type": "text/plain",
+    },
   })
 }
 
