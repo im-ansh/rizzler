@@ -73,8 +73,6 @@ export default function ConversationScreen() {
     }>
   >([])
   const [isRizzlerConnected, setIsRizzlerConnected] = useState(false)
-  const [displayedText, setDisplayedText] = useState("")
-  const [showTextDisplay, setShowTextDisplay] = useState(false)
 
   // Audio processing refs
   const audioContextRef = useRef<AudioContext | null>(null)
@@ -85,24 +83,12 @@ export default function ConversationScreen() {
   const stepStartTimeRef = useRef<number>(0)
   const animationFrameRef = useRef(null)
   const isProcessingResponseRef = useRef<boolean>(false)
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const audioChunksRef = useRef<Blob[]>([])
 
   const addDebugInfo = (info: string) => {
     console.log("RIZZLER DEBUG:", info)
     setDebugInfo((prev) => [...prev.slice(-4), `${new Date().toLocaleTimeString()}: ${info}`])
-  }
-
-  const addProcessingStep = (step, description, status) => {
-    const timestamp = new Date().toLocaleTimeString()
-    setProcessingSteps((prev) => [
-      ...prev.slice(-4),
-      {
-        id: Date.now(),
-        step,
-        description,
-        status,
-        timestamp,
-      },
-    ])
   }
 
   const addPipelineStep = (step: string, status: "pending" | "processing" | "complete" | "error", details?: string) => {
@@ -231,6 +217,23 @@ export default function ConversationScreen() {
       const source = audioContextRef.current.createMediaStreamSource(stream)
       source.connect(analyserRef.current)
 
+      // Setup MediaRecorder for audio capture
+      mediaRecorderRef.current = new MediaRecorder(stream, {
+        mimeType: "audio/webm;codecs=opus",
+      })
+
+      mediaRecorderRef.current.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data)
+        }
+      }
+
+      mediaRecorderRef.current.onstop = () => {
+        const audioBlob = new Blob(audioChunksRef.current, { type: "audio/webm;codecs=opus" })
+        audioChunksRef.current = []
+        processAudioWithAPI(audioBlob)
+      }
+
       addDebugInfo("✅ Rizzler audio setup complete")
     } catch (error) {
       throw new Error(`Audio setup failed: ${error.message}`)
@@ -268,8 +271,15 @@ export default function ConversationScreen() {
           setSpeechDetected(true)
           setConversationState("listening")
           setCurrentSuggestion("🎤 Rizzler AI is listening...")
-          setCurrentStep("Processing Your Voice")
-          addDebugInfo("🎤 Speech detected - Rizzler is listening...")
+          setCurrentStep("Recording Your Voice")
+          addDebugInfo("🎤 Speech detected - Starting recording...")
+
+          // Start recording
+          if (mediaRecorderRef.current && mediaRecorderRef.current.state === "inactive") {
+            audioChunksRef.current = []
+            mediaRecorderRef.current.start()
+            addDebugInfo("🔴 Recording started")
+          }
 
           // Clear any existing timeout
           if (silenceTimeoutRef.current) {
@@ -282,15 +292,18 @@ export default function ConversationScreen() {
             silenceTimeoutRef.current = setTimeout(() => {
               setSpeechDetected(false)
               setConversationState("processing")
-              setCurrentSuggestion("🤖 Rizzler AI is thinking...")
-              setCurrentStep("Generating Response")
-              addDebugInfo("🤫 Silence detected - Rizzler generating response...")
+              setCurrentSuggestion("🤖 Rizzler AI is processing...")
+              setCurrentStep("Sending to API")
+              addDebugInfo("🤫 Silence detected - Stopping recording...")
 
-              // Generate response immediately
-              generateRizzlerResponse()
+              // Stop recording and process
+              if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
+                mediaRecorderRef.current.stop()
+                addDebugInfo("⏹️ Recording stopped")
+              }
 
               silenceTimeoutRef.current = null
-            }, 800) // Shorter timeout for faster responses
+            }, 1000) // 1 second silence timeout
           }
         } else if (isSpeaking && speechDetected) {
           // Continue speaking - cancel timeout
@@ -309,46 +322,63 @@ export default function ConversationScreen() {
     checkAudioLevel()
   }
 
-  const generateRizzlerResponse = () => {
-    // Prevent multiple responses at once
+  const processAudioWithAPI = async (audioBlob: Blob) => {
     if (isProcessingResponseRef.current) {
       addDebugInfo("⚠️ Already processing response, skipping...")
       return
     }
 
     isProcessingResponseRef.current = true
-    addPipelineStep("Rizzler Response", "processing", "Generating Rizzler AI response")
+    addPipelineStep("API Processing", "processing", "Sending audio to Rizzler API")
+
+    try {
+      // Convert audio blob to base64
+      const arrayBuffer = await audioBlob.arrayBuffer()
+      const uint8Array = new Uint8Array(arrayBuffer)
+      const base64Audio = btoa(String.fromCharCode(...uint8Array))
+
+      addDebugInfo(`📤 Sending ${base64Audio.length} bytes to API`)
+
+      const response = await fetch("/api/rizzler", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          audioData: base64Audio,
+          crushGender: crushGender,
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error(`API request failed: ${response.status}`)
+      }
+
+      const result = await response.json()
+      addDebugInfo(`📥 API response: ${result.response?.substring(0, 50)}...`)
+
+      updatePipelineStep("API Processing", "complete", "Response received")
+
+      if (result.success && result.response) {
+        playRizzlerResponse(result.response)
+      } else {
+        throw new Error("Invalid API response")
+      }
+    } catch (error) {
+      console.error("API processing error:", error)
+      addDebugInfo(`❌ API error: ${error.message}`)
+      updatePipelineStep("API Processing", "error", error.message)
+
+      // Fallback response
+      playRizzlerResponse("Yo, Rizzler AI is here for you! Keep that energy up and try again!")
+    }
+  }
+
+  const playRizzlerResponse = (responseText: string) => {
+    addPipelineStep("Rizzler Response", "processing", "Playing Rizzler AI response")
     setConversationState("speaking")
     setIsSpeaking(true)
     setCurrentStep("Rizzler AI Speaking")
-
-    // Rizzler AI responses - always refers to itself as Rizzler AI
-    const rizzlerResponses = [
-      "Yo, that's fire! Rizzler AI is impressed with your confidence right there!",
-      "Damn, you got that natural charm! Rizzler AI sees you leveling up your game!",
-      "That's exactly what I'm talking about! Rizzler AI knows you got the rizz!",
-      "Smooth operator! Rizzler AI is proud of how you handled that line!",
-      "You're absolutely killing it! Rizzler AI can tell you're in your element!",
-      "That's the energy we need! Rizzler AI loves seeing you bring that confidence!",
-      "Perfect delivery! Rizzler AI knows you're about to have them hooked!",
-      "You're speaking their language now! Rizzler AI sees that connection building!",
-      "That's pure rizz right there! Rizzler AI is here for this energy!",
-      "You're on fire today! Rizzler AI can feel that magnetic personality!",
-      "That's how you do it! Rizzler AI knows you're making all the right moves!",
-      "Incredible vibe! Rizzler AI can tell you're really feeling yourself!",
-      "You're absolutely glowing! Rizzler AI loves this confident version of you!",
-      "That's the secret sauce! Rizzler AI sees you mastering the art of conversation!",
-      "You're in the zone! Rizzler AI knows they're completely captivated by you!",
-      "That's championship level rizz! Rizzler AI is your biggest fan right now!",
-      "You're absolutely magnetic! Rizzler AI can feel that irresistible energy!",
-      "That's exactly the move! Rizzler AI knows you're about to seal the deal!",
-      "You're speaking pure poetry! Rizzler AI is amazed by your natural flow!",
-      "That's legendary status! Rizzler AI knows you're about to be unforgettable!",
-    ]
-
-    const randomResponse = rizzlerResponses[Math.floor(Math.random() * rizzlerResponses.length)]
-
-    addDebugInfo(`🎯 Selected response: ${randomResponse}`)
 
     // Play Rizzler AI response with better voice settings
     if ("speechSynthesis" in window) {
@@ -357,7 +387,7 @@ export default function ConversationScreen() {
 
       // Wait a moment for cancellation to complete
       setTimeout(() => {
-        const utterance = new SpeechSynthesisUtterance(randomResponse)
+        const utterance = new SpeechSynthesisUtterance(responseText)
         utterance.rate = 1.1
         utterance.pitch = 1.0
         utterance.volume = 0.9
@@ -378,7 +408,7 @@ export default function ConversationScreen() {
         }
 
         utterance.onstart = () => {
-          addDebugInfo(`🔊 Rizzler AI speaking: ${randomResponse.substring(0, 50)}...`)
+          addDebugInfo(`🔊 Rizzler AI speaking: ${responseText.substring(0, 50)}...`)
         }
 
         utterance.onend = () => {
@@ -405,7 +435,7 @@ export default function ConversationScreen() {
 
         try {
           speechSynthesis.speak(utterance)
-          addDebugInfo(`🔊 Rizzler AI response queued: ${randomResponse}`)
+          addDebugInfo(`🔊 Rizzler AI response queued: ${responseText}`)
         } catch (error) {
           addDebugInfo(`❌ Failed to speak: ${error}`)
           isProcessingResponseRef.current = false
@@ -431,7 +461,7 @@ export default function ConversationScreen() {
       ...prev.slice(-6),
       {
         speaker: "ai",
-        text: randomResponse,
+        text: responseText,
         timestamp: Date.now(),
         confidence: 0.95,
       },
@@ -442,7 +472,7 @@ export default function ConversationScreen() {
       ...prev.slice(-4),
       {
         id: Date.now(),
-        text: randomResponse,
+        text: responseText,
         timestamp: new Date().toLocaleTimeString(),
         confidence: 0.95,
       },
@@ -453,6 +483,11 @@ export default function ConversationScreen() {
     monitoringRef.current = false
     isProcessingResponseRef.current = false
     setIsListening(false)
+
+    // Stop recording if active
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
+      mediaRecorderRef.current.stop()
+    }
 
     // Stop microphone
     if (streamRef.current) {
@@ -507,10 +542,27 @@ export default function ConversationScreen() {
     }
   }
 
-  // Test response function for debugging
-  const testResponse = () => {
-    addDebugInfo("🧪 Testing response generation...")
-    generateRizzlerResponse()
+  // Test API function
+  const testAPI = async () => {
+    addDebugInfo("🧪 Testing API connection...")
+    try {
+      const response = await fetch("/api/rizzler", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          audioData: "test_data",
+          crushGender: crushGender,
+        }),
+      })
+
+      const result = await response.json()
+      addDebugInfo(`✅ API test result: ${result.response}`)
+      playRizzlerResponse(result.response)
+    } catch (error) {
+      addDebugInfo(`❌ API test failed: ${error.message}`)
+    }
   }
 
   const getStatusColor = (status) => {
@@ -649,7 +701,7 @@ export default function ConversationScreen() {
           <CardContent className="pt-6">
             <div className="text-center">
               <p className="text-xl font-bold text-blue-200">{currentStep}</p>
-              <p className="text-sm text-blue-300 mt-2">🎤 Your Voice → 🔥 Rizzler AI → 🗣️ Instant Coaching</p>
+              <p className="text-sm text-blue-300 mt-2">🎤 Voice Capture → 📡 API Processing → 🗣️ Rizzler Response</p>
             </div>
           </CardContent>
         </Card>
@@ -762,14 +814,14 @@ export default function ConversationScreen() {
                 )}
               </Button>
 
-              {/* Test Response Button */}
+              {/* Test API Button */}
               <Button
-                onClick={testResponse}
+                onClick={testAPI}
                 variant="outline"
                 className="w-full bg-purple-600/20 border-purple-500/30 text-purple-200 hover:bg-purple-600/30"
               >
                 <Zap className="w-4 h-4 mr-2" />
-                Test Rizzler Response
+                Test API Connection
               </Button>
 
               {/* Audio Level Indicator */}
